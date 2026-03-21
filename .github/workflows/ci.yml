@@ -118,22 +118,5 @@ jobs:
               test -x "${PYBIN}/python"
               "${PYBIN}/python" -m pip install --force-reinstall dist/*.whl xarray
               cd /tmp
-              "${PYBIN}/python" - <<"PY"
-              import pathlib
-              import numpy as np
-              import skytropd as pyt
-              import skytropd.tutorial as tutorial
-
-              package_dir = pathlib.Path(pyt.__file__).resolve().parent
-              assert (package_dir / "ValidationData" / "va.nc").exists()
-              assert (package_dir / "ValidationMetrics" / "EDJ.nc").exists()
-              assert tutorial.V.shape == (tutorial.lat.size, tutorial.lev.size)
-              phi = pyt.TropD_Calculate_MaxLat(
-                  np.sin(2.0 * np.radians(np.array([10.0, 20.0, 30.0, 40.0, 50.0]))),
-                  np.array([10.0, 20.0, 30.0, 40.0, 50.0]),
-              )
-              assert np.isfinite(phi)
-              print(package_dir)
-              print(phi)
-              PY
+              "${PYBIN}/python" /project/testing/smoke_wheel.py
             '
