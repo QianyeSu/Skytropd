@@ -171,7 +171,7 @@ html_short_title = 'SkyTropD'
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-html_sidebars = {'**': ['about.html', 'navigation.html', 'relations.html', 'searchbox.html']}
+html_sidebars = {'**': ['about.html', 'globaltoc.html', 'relations.html', 'searchbox.html']}
 
 # Add any extra paths that contain custom files (such as robots.txt or
 # .htaccess) here, relative to this directory. These files are copied
@@ -304,6 +304,7 @@ texinfo_documents = [
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {'python': ('https://docs.python.org/3', None)}
+
 
 
 
