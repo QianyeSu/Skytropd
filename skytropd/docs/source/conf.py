@@ -13,7 +13,7 @@
 # serve to show the default.
 
 import sys
-import os
+from pathlib import Path
 #import alabaster
 
 
@@ -21,9 +21,9 @@ import os
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #sys.path.insert(0, os.path.abspath('.'))
-sys.path.insert(0, os.path.abspath('../../../skytropd'))
-
-print(sys.path)
+DOCS_SOURCE = Path(__file__).resolve().parent
+PACKAGE_DIR = DOCS_SOURCE.parents[2] / 'skytropd'
+sys.path.insert(0, str(PACKAGE_DIR))
 
 # -- General configuration ------------------------------------------------
 
