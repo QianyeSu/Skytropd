@@ -14,7 +14,7 @@
 
 import sys
 from pathlib import Path
-#import alabaster
+import alabaster
 
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -22,8 +22,8 @@ from pathlib import Path
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #sys.path.insert(0, os.path.abspath('.'))
 DOCS_SOURCE = Path(__file__).resolve().parent
-PACKAGE_DIR = DOCS_SOURCE.parents[2] / 'skytropd'
-sys.path.insert(0, str(PACKAGE_DIR))
+REPO_ROOT = DOCS_SOURCE.parents[3]
+sys.path.insert(0, str(REPO_ROOT))
 
 # -- General configuration ------------------------------------------------
 
@@ -33,7 +33,7 @@ sys.path.insert(0, str(PACKAGE_DIR))
 # Add any Sphinx extension module names here, as strings. They can be
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
-#html_theme_path = [alabaster.get_path()]
+html_theme_path = [alabaster.get_path()]
 
 extensions = [
     'sphinx.ext.autodoc',
@@ -130,19 +130,22 @@ pygments_style = 'sphinx'
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-html_theme = 'classic'
-#html_theme = 'alabaster'
+#html_theme = 'classic'
+html_theme = 'alabaster'
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 html_theme_options = {
-    'rightsidebar': 'false',
-    'stickysidebar': 'false',
-    'collapsiblesidebar': 'true',
-    'body_min_width': '760px',
-    'body_max_width': '960px',
-    'sidebarwidth': '230px',
+    'description': 'Community-maintained tropical width diagnostics package.',
+    'github_user': 'QianyeSu',
+    'github_repo': 'Skytropd',
+    'github_button': True,
+    'github_type': 'star',
+    'github_banner': False,
+    'fixed_sidebar': True,
+    'page_width': '980px',
+    'sidebar_width': '220px',
 }
 
 # Add any paths that contain custom themes here, relative to this directory.
@@ -150,7 +153,7 @@ html_theme_options = {
 
 # The name for this set of Sphinx documents.  If None, it defaults to
 # "<project> v<release> documentation".
-html_title = 'SkyTropD Documentation'
+html_title = 'SkyTropD'
 
 # A shorter title for the navigation bar.  Default is the same as html_title.
 html_short_title = 'SkyTropD'
@@ -168,8 +171,7 @@ html_short_title = 'SkyTropD'
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
-html_css_files = ['theme_overrides.css']
-html_sidebars = {'**': ['globaltoc.html', 'relations.html', 'searchbox.html']}
+html_sidebars = {'**': ['about.html', 'navigation.html', 'relations.html', 'searchbox.html']}
 
 # Add any extra paths that contain custom files (such as robots.txt or
 # .htaccess) here, relative to this directory. These files are copied
@@ -302,6 +304,9 @@ texinfo_documents = [
 
 # Example configuration for intersphinx: refer to the Python standard library.
 intersphinx_mapping = {'python': ('https://docs.python.org/3', None)}
+
+
+
 
 
 

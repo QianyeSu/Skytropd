@@ -2,7 +2,7 @@
 Additional functions
 ====================
 
-.. currentmodule:: functions
+.. currentmodule:: skytropd.functions
 
 .. autosummary::
 
@@ -24,6 +24,5 @@ Additional functions
 Description of additional functions 
 ===================================
 
-.. automodule:: functions
+.. automodule:: skytropd.functions
    :members:
-

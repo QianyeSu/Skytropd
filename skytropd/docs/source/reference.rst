@@ -2,7 +2,7 @@
 List of metrics
 =================
 
-.. currentmodule:: metrics
+.. currentmodule:: skytropd.metrics
 
 .. autosummary::
 
@@ -27,5 +27,5 @@ List of metrics
 Description of metrics
 ======================
 
-.. automodule:: metrics
+.. automodule:: skytropd.metrics
    :members:
