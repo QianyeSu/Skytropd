@@ -11,17 +11,26 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTEST_ARGS: >-
+    testing/test_functions.py
+    testing/test_metrics.py
+    testing/test_xarray_metrics.py
+    testing/test_import_alias.py
+
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  source-tests:
+    name: Source tests (${{ matrix.os }} / Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        os: [ubuntu-latest, macos-13, macos-14]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -35,9 +44,33 @@ jobs:
           python -m pip install pytest xarray
 
       - name: Run tests
-        run: |
-          python -m pytest -q \
-            testing/test_functions.py \
-            testing/test_metrics.py \
-            testing/test_xarray_metrics.py \
-            testing/test_import_alias.py
+        run: python -m pytest -q -p no:cacheprovider ${{ env.PYTEST_ARGS }}
+
+  manylinux-wheel-tests:
+    name: Wheel tests (${{ matrix.manylinux-image }} / ${{ matrix.python-tag }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        manylinux-image: [manylinux2014, manylinux_2_28]
+        python-tag: [cp38, cp39, cp310, cp311, cp312, cp313, cp314]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Build and test wheel
+        uses: pypa/cibuildwheel@v3.4.0
+        with:
+          output-dir: wheelhouse
+        env:
+          CIBW_BUILD: ${{ matrix.python-tag }}-manylinux_x86_64
+          CIBW_SKIP: "*-musllinux*"
+          CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.manylinux-image }}
+          CIBW_TEST_REQUIRES: pytest xarray
+          CIBW_TEST_COMMAND: >-
+            python -m pytest -q -p no:cacheprovider
+            {project}/testing/test_functions.py
+            {project}/testing/test_metrics.py
+            {project}/testing/test_xarray_metrics.py
+            {project}/testing/test_import_alias.py
