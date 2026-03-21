@@ -1,11 +1,10 @@
-﻿
-
-<div align="center">
+﻿<div align="center">
   <a href="https://github.com/QianyeSu/Skytropd">
     <img src="https://raw.githubusercontent.com/QianyeSu/Skytropd/main/assets/logo.svg" alt="SkyTropD Logo" width="800">
   </a>
 </div>
 
+# SkyTropD
 
 SkyTropD is a community-maintained fork of PyTropD for calculating tropical width metrics. The upstream scientific methods and API are preserved where practical while compatibility fixes and maintenance continue in this fork.
 
@@ -35,7 +34,3 @@ Upstream reference documentation:
 
 - https://skytropd.readthedocs.io/en/latest/
 - PyTropD xarray tutorial: [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/tropd/pytropd/master?labpath=pytropd%2Fxr_tutorial.ipynb)
-
-
-
-
