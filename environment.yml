@@ -1,27 +1,23 @@
-name: tropd #name of your env
+name: skytropd
 channels:
-        - conda-forge
-        - defaults
-        - aph42
+  - conda-forge
+  - defaults
 dependencies:
-        - python==3.8.*
-        - numpy >= 1.19
-        - matplotlib
-        - scipy >= 1.5
-        - netCDF4
-        - xarray
-        - black
-        - pytest
-        - ipython
-        - pygeode
-        - mypy
-        - flake8
-        - flake8-docstrings
-        - jupyterlab
-        - pooch
-        - dask
-        - pip
-        - pip:
-            - -e .
-
-# do conda env create -f tropd.yml or conda env update -f tropd.yml""
+  - python==3.8.*
+  - numpy >= 1.19
+  - matplotlib
+  - scipy >= 1.5
+  - netCDF4
+  - xarray
+  - black
+  - pytest
+  - ipython
+  - mypy
+  - flake8
+  - flake8-docstrings
+  - jupyterlab
+  - pooch
+  - dask
+  - pip
+  - pip:
+      - -e .
