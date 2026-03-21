@@ -116,7 +116,10 @@ jobs:
             bash -lc '
               set -euxo pipefail
               test -x "${PYBIN}/python"
-              "${PYBIN}/python" -m pip install --force-reinstall dist/*.whl xarray
+              "${PYBIN}/python" -m pip install --upgrade pip
+              "${PYBIN}/python" -m pip install --only-binary=:all: numpy scipy pandas xarray
+              "${PYBIN}/python" -m pip install --force-reinstall --no-deps dist/*.whl
               cd /tmp
               "${PYBIN}/python" /project/testing/smoke_wheel.py
             '
+
