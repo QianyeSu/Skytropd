@@ -4,7 +4,7 @@
 
 SkyTropD is a community-maintained fork of PyTropD for calculating tropical width metrics. The upstream scientific methods and API are preserved where practical while compatibility fixes and maintenance continue in this fork.
 
-Maintained by Qianye Su (`suqianye2000@gmail.com`).
+A Python package for tropical width metrics
 
 Import with the SkyTropD package name:
 
@@ -18,7 +18,7 @@ Install from the forked package name:
 pip install skytropd
 ```
 
-The Python 3 version requires `numpy>=1.19` and `scipy>=1.5`.
+SkyTropD currently supports Python `3.9` through `3.14` and requires `numpy>=1.19` and `scipy>=1.5`.
 
 Origin and licensing:
 

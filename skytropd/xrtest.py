@@ -8,9 +8,17 @@ from pathlib import Path
 # Check calculations with precalculated values from file within roundoff error
 # Psi500
 # read meridional velocity V(time,lat,lev), latitude and level
-root = Path(__file__).absolute().parent.parent
-data_dir = root / "ValidationData"
-metrics_dir = root / "ValidationMetrics"
+def _resource_dir(name: str) -> Path:
+    package_root = Path(__file__).resolve().parent
+    for base in (package_root, package_root.parent):
+        candidate = base / name
+        if candidate.exists():
+            return candidate
+    return package_root / name
+
+
+data_dir = _resource_dir("ValidationData")
+metrics_dir = _resource_dir("ValidationMetrics")
 
 
 def get_validated_metric(metric: str) -> xr.DataArray:

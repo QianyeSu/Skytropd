@@ -26,7 +26,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-13, macos-14]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout
@@ -46,31 +46,84 @@ jobs:
       - name: Run tests
         run: python -m pytest -q -p no:cacheprovider ${{ env.PYTEST_ARGS }}
 
-  manylinux-wheel-tests:
-    name: Wheel tests (${{ matrix.manylinux-image }} / ${{ matrix.python-tag }})
+  manylinux-tests:
+    name: Manylinux tests (${{ matrix.manylinux-image }} / ${{ matrix.python-tag }})
     runs-on: ubuntu-latest
+    container:
+      image: quay.io/pypa/${{ matrix.manylinux-image }}_x86_64
     strategy:
       fail-fast: false
       matrix:
         manylinux-image: [manylinux2014, manylinux_2_28]
-        python-tag: [cp38, cp39, cp310, cp311, cp312, cp313, cp314]
+        python-tag: [cp39, cp310, cp311, cp312, cp313, cp314]
+        exclude:
+          - manylinux-image: manylinux2014
+            python-tag: cp314
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Build and test wheel
-        uses: pypa/cibuildwheel@v3.4.0
-        with:
-          output-dir: wheelhouse
-        env:
-          CIBW_BUILD: ${{ matrix.python-tag }}-manylinux_x86_64
-          CIBW_SKIP: "*-musllinux*"
-          CIBW_MANYLINUX_X86_64_IMAGE: ${{ matrix.manylinux-image }}
-          CIBW_TEST_REQUIRES: pytest xarray
-          CIBW_TEST_COMMAND: >-
-            python -m pytest -q -p no:cacheprovider
-            {project}/testing/test_functions.py
-            {project}/testing/test_metrics.py
-            {project}/testing/test_xarray_metrics.py
-            {project}/testing/test_import_alias.py
+      - name: Resolve interpreter
+        shell: bash
+        run: |
+          PYBIN="/opt/python/${{ matrix.python-tag }}-${{ matrix.python-tag }}/bin"
+          test -x "$PYBIN/python"
+          echo "PYBIN=$PYBIN" >> "$GITHUB_ENV"
+
+      - name: Install build tools
+        shell: bash
+        run: |
+          "$PYBIN/python" -m pip install --upgrade pip
+          "$PYBIN/python" -m pip install build xarray
+
+      - name: Build wheel
+        shell: bash
+        run: |
+          rm -rf dist build
+          "$PYBIN/python" -m build --wheel
+
+      - name: Verify wheel contents
+        shell: bash
+        run: |
+          "$PYBIN/python" - <<'PY'
+          import pathlib
+          import zipfile
+
+          wheel = next(pathlib.Path('dist').glob('*.whl'))
+          with zipfile.ZipFile(wheel) as zf:
+              names = set(zf.namelist())
+          required = {
+              'skytropd/tutorial.py',
+              'skytropd/ValidationData/va.nc',
+              'skytropd/ValidationMetrics/EDJ.nc',
+          }
+          missing = sorted(required - names)
+          if missing:
+              raise SystemExit(f'Missing files in wheel: {missing}')
+          print(f'Verified wheel: {wheel.name}')
+          PY
+
+      - name: Install wheel and run smoke tests
+        shell: bash
+        run: |
+          "$PYBIN/python" -m pip install --force-reinstall dist/*.whl
+          cd /tmp
+          "$PYBIN/python" - <<'PY'
+          import pathlib
+          import numpy as np
+          import skytropd as pyt
+          import skytropd.tutorial as tutorial
+
+          package_dir = pathlib.Path(pyt.__file__).resolve().parent
+          assert (package_dir / 'ValidationData' / 'va.nc').exists()
+          assert (package_dir / 'ValidationMetrics' / 'EDJ.nc').exists()
+          assert tutorial.V.shape == (tutorial.lat.size, tutorial.lev.size)
+          phi = pyt.TropD_Calculate_MaxLat(
+              np.sin(2.0 * np.radians(np.array([10.0, 20.0, 30.0, 40.0, 50.0]))),
+              np.array([10.0, 20.0, 30.0, 40.0, 50.0]),
+          )
+          assert np.isfinite(phi)
+          print(package_dir)
+          print(phi)
+          PY

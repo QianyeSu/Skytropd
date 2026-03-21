@@ -46,3 +46,10 @@ def test_precomputed_psi_invalid_field_type():
     with pytest.raises(ValueError):
         TropD_Metric_PSI(V, lats, levs, field_type="bad")
 
+
+
+def test_metric_code_parser_handles_prefixed_names():
+    from skytropd.metrics import _metric_code_from_name
+
+    assert _metric_code_from_name("TropD_Metric_TPB") == "TPB"
+    assert _metric_code_from_name("TropD_Metric_PSI_precomputed") == "PSI"

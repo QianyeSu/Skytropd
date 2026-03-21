@@ -143,7 +143,7 @@ def save_fig_as_file(file):
         name of the output file to save (expecting no periods in stem)
     """
 
-    figdir = rootdir / "ValidationMetrics/figs"
+    figdir = metrics_dir / "figs"
     figdir.mkdir(exist_ok=True)
     fname, ext = file.split(".")
     figfile = figdir / f"{fname}_{pyt.__version__}.{ext}"
@@ -155,17 +155,24 @@ def save_fig_as_file(file):
 
 # get validation files as dictionaries for easy access
 # used to build absolute path to data files
-rootdir = Path(__file__).absolute().parent.parent
+def _resource_dir(name: str) -> Path:
+    package_root = Path(__file__).resolve().parent
+    for base in (package_root, package_root.parent):
+        candidate = base / name
+        if candidate.exists():
+            return candidate
+    return package_root / name
+
+
+data_dir = _resource_dir("ValidationData")
+metrics_dir = _resource_dir("ValidationMetrics")
+rootdir = data_dir.parent
 
 # data files
-data_files = {
-    f.name.split(".")[0]: f for f in (rootdir / "ValidationData").glob("*.nc")
-}
+data_files = {f.name.split(".")[0]: f for f in data_dir.glob("*.nc")}
 
 # metric files
-metric_files = {
-    f.name.split(".")[0]: f for f in (rootdir / "ValidationMetrics").glob("*.nc")
-}
+metric_files = {f.name.split(".")[0]: f for f in metrics_dir.glob("*.nc")}
 
 # matplotlib is optional dependency, only plot if installed - sjs 2022.01.28
 if DRAW_FIGS:

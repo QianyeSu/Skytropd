@@ -10,8 +10,17 @@ except ImportError:  # pragma: no cover - exercised only when xarray is absent.
 from scipy.io import netcdf_file
 
 
+def _validation_file(filename: str) -> Path:
+    package_root = Path(__file__).resolve().parent
+    for base in (package_root, package_root.parent):
+        candidate = base / "ValidationData" / filename
+        if candidate.exists():
+            return candidate
+    return package_root / "ValidationData" / filename
+
+
 def buildV():
-    filename = Path(__file__).resolve().parent.parent / "ValidationData" / "va.nc"
+    filename = _validation_file("va.nc")
     # 1) PSI -- Streamfunction zero crossing
     # read meridional velocity V(time,lat,lev), latitude and level
     if xr is not None:

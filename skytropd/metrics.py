@@ -34,7 +34,8 @@ def _metric_code_from_name(func_name: str) -> str:
     """Infer the base metric code from a metric wrapper function name."""
 
     known_codes = ("EDJ", "OLR", "PE", "PSI", "PSL", "STJ", "TPB", "UAS", "GWL", "1sigma")
-    metric_name = func_name.removeprefix("TropD_Metric_")
+    prefix = "TropD_Metric_"
+    metric_name = func_name[len(prefix) :] if func_name.startswith(prefix) else func_name
     for code in known_codes:
         if (
             metric_name == code
