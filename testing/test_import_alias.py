@@ -1,4 +1,6 @@
 import importlib
+import sys
+import warnings
 
 import skytropd
 
@@ -9,7 +11,10 @@ def test_skytropd_import():
 
 
 def test_skytropd_submodule_imports():
-    tutorial = importlib.import_module("skytropd.tutorial")
+    sys.modules.pop("skytropd.tutorial", None)
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        tutorial = importlib.import_module("skytropd.tutorial")
     metrics = importlib.import_module("skytropd.metrics")
 
     assert hasattr(tutorial, "lat")

@@ -59,24 +59,23 @@ class MetricAccessor:
         # method="cutoff"
         metric_output: Union[xr.DataArray, Tuple[xr.DataArray, ...]]
         if (self.metric_name == "tpb") and ("Z" in self.params):
-            Z = self.params.pop("Z")
-            try:
-                metric_output = xr.apply_ufunc(
-                    lambda data, Z, **kwargs: metric_function(data, Z=Z, **kwargs)[
-                        slice(None) if nreturns > 1 else 0
-                    ],
-                    self.xarray_data,
-                    Z,
-                    kwargs=self.params,
-                    input_core_dims=2 * input_core_dims,
-                    output_core_dims=nreturns * [[]],
-                    # we might want to warn users when using dask as some skytropd functions
-                    # still iterate over arrays under the hood, which is very slow with dask
-                    dask="allowed",
-                )
-            except Exception as e:
-                print(e)
-                breakpoint()
+            Z = self.params["Z"]
+            metric_kwargs = {
+                key: value for key, value in self.params.items() if key != "Z"
+            }
+            metric_output = xr.apply_ufunc(
+                lambda data, Z, **kwargs: metric_function(data, Z=Z, **kwargs)[
+                    slice(None) if nreturns > 1 else 0
+                ],
+                self.xarray_data,
+                Z,
+                kwargs=metric_kwargs,
+                input_core_dims=2 * input_core_dims,
+                output_core_dims=nreturns * [[]],
+                # we might want to warn users when using dask as some skytropd functions
+                # still iterate over arrays under the hood, which is very slow with dask
+                dask="allowed",
+            )
         else:
             metric_output = xr.apply_ufunc(
                 metric_function
@@ -279,7 +278,7 @@ class MetricAccessor:
         # check for pressure if required or present for optional ones
         if self.require_pres_axis or (
             self.metric_name in ["edj", "uas"]
-            and (self.pres_name in self.xarray_data.dims)
+            and (self.pres_name in xarray_data.dims)
         ):
             xarray_data = xarray_data.sortby(self.pres_name)
             pressure: np.ndarray = xarray_data[self.pres_name].values
