@@ -35,23 +35,4 @@ From source control
 
   ``python setup.py install``
 
-From source archive
-===================
-
-1. Download the tarball from `here <https://pypi.org/project/skytropd/#files>`_
-
-2. Untar the files 
-
-  ``tar -xzvf skytropd-<version>.tar.gz``
-  
-  ``cd skytropd-<version>``
-
-3. Compile and install the source
-    
-  ``cd skytropd``
-
-  ``python setup.py build``
-
-  ``python setup.py install``
-
 
