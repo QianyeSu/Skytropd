@@ -4,7 +4,6 @@
   </a>
 </div>
 
-# SkyTropD
 
 SkyTropD is a community-maintained fork of PyTropD for calculating tropical width metrics. The upstream scientific methods and API are preserved where practical while compatibility fixes and maintenance continue in this fork.
 
