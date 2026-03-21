@@ -1,4 +1,4 @@
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+﻿[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
 # SkyTropD
 
@@ -28,5 +28,6 @@ Origin and licensing:
 
 Upstream reference documentation:
 
-- https://tropd.github.io/pytropd/reference.html
+- https://skytropd.readthedocs.io/en/latest/
 - PyTropD xarray tutorial: [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/tropd/pytropd/master?labpath=pytropd%2Fxr_tutorial.ipynb)
+
