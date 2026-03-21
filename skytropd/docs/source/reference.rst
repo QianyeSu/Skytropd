@@ -22,10 +22,9 @@ List of metrics
   
   TropD_Metric_UAS
 
-.. _Description-of-metrics
-
 Description of metrics
 ======================
 
 .. automodule:: skytropd.metrics
    :members:
+

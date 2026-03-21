@@ -19,8 +19,6 @@ Additional functions
   TropD_Calculate_ZeroCrossing
   
 
-.. _Description-of-additional-functions
-
 Description of additional functions 
 ===================================
 

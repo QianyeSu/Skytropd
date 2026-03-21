@@ -1,0 +1,21 @@
+<h3>Navigation</h3>
+<ul>
+  <li class="toctree-l1{% if pagename == 'install' %} current{% endif %}"><a class="reference internal{% if pagename == 'install' %} current{% endif %}" href="{{ pathto('install') }}">Installation</a></li>
+  <li class="toctree-l1{% if pagename == 'tutorial' %} current{% endif %}"><a class="reference internal{% if pagename == 'tutorial' %} current{% endif %}" href="{{ pathto('tutorial') }}">Tutorial</a></li>
+  <li class="toctree-l1{% if pagename == 'reference' %} current{% endif %}">
+    <a class="reference internal{% if pagename == 'reference' %} current{% endif %}" href="{{ pathto('reference') }}">List of metrics</a>
+    {% if pagename == 'reference' %}
+    <ul>
+      <li class="toctree-l2"><a class="reference internal" href="#module-skytropd.metrics">Description of metrics</a></li>
+    </ul>
+    {% endif %}
+  </li>
+  <li class="toctree-l1{% if pagename == 'helper' %} current{% endif %}">
+    <a class="reference internal{% if pagename == 'helper' %} current{% endif %}" href="{{ pathto('helper') }}">Additional functions</a>
+    {% if pagename == 'helper' %}
+    <ul>
+      <li class="toctree-l2"><a class="reference internal" href="#module-skytropd.functions">Description of additional functions</a></li>
+    </ul>
+    {% endif %}
+  </li>
+</ul>

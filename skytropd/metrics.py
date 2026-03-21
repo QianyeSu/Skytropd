@@ -1,4 +1,4 @@
-# Written by Ori Adam Mar.21.2017
+﻿# Written by Ori Adam Mar.21.2017
 # Edited by Alison Ming Jul.4.2017
 # rewrite for readability/vectorization - sjs 1.27.22
 from typing import Optional, Tuple, Callable, Union
@@ -515,7 +515,8 @@ def TropD_Metric_PE(
         latitude array
     method : {"zero_crossing"}, optional
         Method to compute the zero crossing for precipitation minus evaporation, by
-        default "zero_crossing":
+        default "zero_crossing".
+
         * "zero_crossing": the first latitude poleward of the subtropical P-E min
                            where P-E changes from negative to positive.
 
@@ -787,11 +788,7 @@ def TropD_Metric_STJ(
                        equatorward of 60 degrees
         * "core_max": Latitude of maximum (smoothing parameter ``n=6``) of the zonal wind
                       averaged between 100 and 400 hPa, poleward of 10 degrees and
-                      equatorward of 60 degrees
-         * "fit": Latitude of the maximum of [the zonal wind averaged between 100 and 400
-                  hPa] minus [the zonal mean zonal wind at the level closest to 850hPa]
-                  using a quadratic polynomial fit of data from grid points surrounding
-                  the grid point of the maximum
+                      equatorward of 60 degrees`r`n        * "fit": Latitude of the maximum of [the zonal wind averaged between 100 and 400`r`n          hPa] minus [the zonal mean zonal wind at the level closest to 850 hPa]`r`n          using a quadratic polynomial fit of data from grid points surrounding`r`n          the grid point of the maximum
 
     n_fit : int, optional
         used when ``method="fit"``, determines the number of points around the max to use
@@ -1019,7 +1016,7 @@ def TropD_Metric_UAS(
     lev : numpy.ndarray, optional (lev,)
         vertical level array in hPa, required if U has final dimension lev
     method : {"zero_crossing"}, optional
-        Method for identifying the surface wind zero crossing, by default "zero_crossing":
+        Method for identifying the surface wind zero crossing, by default "zero_crossing".
 
         * "zero_crossing": the first subtropical latitude where near-surface zonal wind
                            changes from negative to positive
@@ -1224,4 +1221,5 @@ def Shah_2020_1sigma(
         )
 
     return tracer_sigma_lat
+
 

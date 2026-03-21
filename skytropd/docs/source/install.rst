@@ -10,7 +10,7 @@ You'll need to install the following packages:
 * `Python 3.8+ <http://python.org/download/>`_
 * `Numpy (>=1.19) and Scipy <https://www.scipy.org/install.html>`_
 * `Matplotlib <https://matplotlib.org/users/installing.html>`_
-* SkyTropD source code
+* `SkyTropD source code <https://github.com/QianyeSu/Skytropd>`_
             
 Pip install
 ===========
@@ -25,7 +25,7 @@ From source control
 
 1. Clone your SkyTropD repository
 
-  ``git clone <your-fork-url>``
+  ``git clone https://github.com/QianyeSu/Skytropd.git``
 
 2. Compile and install the source
     
@@ -53,3 +53,5 @@ From source archive
   ``python setup.py build``
 
   ``python setup.py install``
+
+
