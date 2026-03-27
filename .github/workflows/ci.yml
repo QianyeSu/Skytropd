@@ -124,6 +124,6 @@ jobs:
               "${PYBIN}/python" -m pip install --only-binary=:all: numpy scipy pandas xarray
               "${PYBIN}/python" -m pip install --force-reinstall --no-deps dist/*.whl
               cd /tmp
-              "${PYBIN}/python" /project/testing/smoke_wheel.py
+              "${PYBIN}/python" /project/testing/smoke_runtime_wheel.py
             '
 

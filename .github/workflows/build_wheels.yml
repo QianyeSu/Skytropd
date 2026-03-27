@@ -23,7 +23,7 @@ permissions:
 env:
   CIBW_BUILD_VERBOSITY: "1"
   CIBW_SKIP: "*-musllinux* *-win32"
-  CIBW_TEST_COMMAND: "python {project}/testing/smoke_wheel.py"
+  CIBW_TEST_COMMAND: "python {project}/testing/smoke_runtime_wheel.py"
 
 jobs:
   build_linux:

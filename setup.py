@@ -8,28 +8,10 @@ import sys
 
 from setuptools import Extension, setup
 from setuptools.command.build_ext import build_ext
-from setuptools.command.build_py import build_py as _build_py
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 PACKAGE_DIR = PROJECT_ROOT / "skytropd"
-RESOURCE_DIRS = ("ValidationData", "ValidationMetrics")
 FORTRAN_SKIP_ENV = "SKYTROPD_SKIP_FORTRAN"
-
-
-class build_py(_build_py):
-    """Copy validation resources into the packaged wheel."""
-
-    package_name = "skytropd"
-
-    def run(self):
-        super().run()
-        build_package_dir = Path(self.build_lib) / self.package_name
-        for resource_dir in RESOURCE_DIRS:
-            src = PROJECT_ROOT / resource_dir
-            dst = build_package_dir / resource_dir
-            if dst.exists():
-                shutil.rmtree(dst)
-            shutil.copytree(src, dst)
 
 
 class MesonBuildExt(build_ext):
@@ -196,7 +178,7 @@ class MesonBuildExt(build_ext):
 
 
 setup(
-    cmdclass={"build_py": build_py, "build_ext": MesonBuildExt},
+    cmdclass={"build_ext": MesonBuildExt},
     ext_modules=[
         Extension(
             "skytropd._zero_crossing_backend",
