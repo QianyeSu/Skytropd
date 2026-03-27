@@ -1,2 +1,5 @@
 # Exclude Jupyter notebooks from GitHub language statistics
 *.ipynb linguist-detectable=false
+
+# Exclude test code from GitHub language statistics
+testing/** linguist-detectable=false
