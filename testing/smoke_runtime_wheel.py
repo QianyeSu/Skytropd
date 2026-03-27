@@ -1,32 +1,47 @@
+from pathlib import Path
+
 import numpy as np
+from scipy.io import netcdf_file
 
 import skytropd as pyt
 from skytropd._fortran_zero_crossing import fortran_zero_crossing_status
+
+
+def _load_validation_v():
+    repo_root = Path(__file__).resolve().parents[1]
+    filename = repo_root / "ValidationData" / "va.nc"
+    if not filename.exists():
+        raise FileNotFoundError(f"missing validation data file: {filename}")
+
+    with netcdf_file(filename, "r", mmap=False) as dataset:
+        v = np.array(dataset.variables["va"][:], copy=True)
+        v = np.transpose(v, (2, 1, 0))
+        v = v[0, :, :]
+        lat = np.array(dataset.variables["lat"][:], copy=True)
+        lev = np.array(dataset.variables["lev"][:], copy=True)
+
+    return v, lat, lev
 
 
 def main() -> None:
     backend_ok, backend_error = fortran_zero_crossing_status()
     assert backend_ok, backend_error
 
-    lat = np.arange(-50.0, 51.0, 10.0)
-    field = np.sin(2.0 * np.radians(np.abs(lat)))
-    phi = pyt.TropD_Calculate_MaxLat(field, lat)
-    assert np.isfinite(phi)
+    package_dir = Path(pyt.__file__).resolve().parent
+    assert not (package_dir / "ValidationData").exists()
+    assert not (package_dir / "ValidationMetrics").exists()
 
-    zc_field = np.linspace(-5.0, 5.0, lat.size)
-    zc = pyt.TropD_Calculate_ZeroCrossing(zc_field, lat)
-    assert np.isfinite(zc)
+    v, lat, lev = _load_validation_v()
+    psi = pyt.TropD_Calculate_StreamFunction(v, lat, lev)
 
-    lev = np.array([1000.0, 850.0, 700.0, 500.0, 300.0])
-    lat_shape = np.sin(3.0 * np.pi * np.abs(lat)[:, None] / np.max(np.abs(lat)))
-    vertical_shape = np.cos(
-        np.pi * (lev[None, :] - lev[-1]) / (lev[0] - lev[-1])
-    )
-    V = np.sign(lat)[:, None] * 20.0 * lat_shape * vertical_shape
-    psi = pyt.TropD_Calculate_StreamFunction(V, lat, lev)
-    phi_sh, phi_nh = pyt.TropD_Metric_PSI(psi, lat, lev, field_type="PSI")
-    assert np.all(np.isfinite(phi_sh))
-    assert np.all(np.isfinite(phi_nh))
+    phi_from_v = pyt.TropD_Metric_PSI(v, lat, lev)
+    phi_from_psi = pyt.TropD_Metric_PSI(psi, lat, lev, field_type="PSI")
+
+    assert len(phi_from_v) == len(phi_from_psi) == 2
+    for phi_v, phi_psi in zip(phi_from_v, phi_from_psi):
+        assert np.all(np.isfinite(phi_v))
+        assert np.all(np.isfinite(phi_psi))
+        assert np.allclose(phi_v, phi_psi, equal_nan=True)
 
 
 if __name__ == "__main__":
