@@ -16,6 +16,24 @@ def _build_symmetric_meridional_wind():
     return V, lats, levs
 
 
+def _build_threshold_only_psi():
+    lats = np.array([-60.0, -50.0, -40.0, -30.0, -20.0, -10.0, 0.0, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0])
+    levs = np.array([300.0, 500.0, 700.0])
+    profile_map = {
+        0.0: 6.0,
+        10.0: 8.0,
+        20.0: 10.0,
+        30.0: 2.0,
+        40.0: 0.5,
+        50.0: 0.2,
+        60.0: 0.1,
+    }
+    profile = np.array([profile_map[abs(lat)] for lat in lats], dtype=float)
+    psi_lat = np.where(lats < 0.0, -profile, profile)
+    psi = np.repeat(psi_lat[:, None], levs.size, axis=1)
+    return psi, lats, levs
+
+
 @pytest.mark.parametrize(
     "method",
     ["Psi_500", "Psi_500_10Perc", "Psi_300_700", "Psi_500_Int", "Psi_Int"],
@@ -45,6 +63,44 @@ def test_precomputed_psi_invalid_field_type():
 
     with pytest.raises(ValueError):
         TropD_Metric_PSI(V, lats, levs, field_type="bad")
+
+
+@pytest.mark.parametrize("method", ["Psi_500", "Psi_300_700", "Psi_500_Int", "Psi_Int"])
+def test_psi_threshold_fallback_replaces_nan_zero_crossing(method):
+    Psi, lats, levs = _build_threshold_only_psi()
+
+    phi_without_fallback = TropD_Metric_PSI(
+        Psi, lats, levs, method=method, field_type="PSI", threshold=None
+    )
+    phi_with_fallback = TropD_Metric_PSI(
+        Psi, lats, levs, method=method, field_type="PSI", threshold=0.1
+    )
+
+    assert len(phi_without_fallback) == len(phi_with_fallback) == 2
+    for phi_nan, phi_fallback in zip(phi_without_fallback, phi_with_fallback):
+        assert np.all(np.isnan(phi_nan))
+        assert np.all(np.isfinite(phi_fallback))
+
+
+def test_psi_500_threshold_fallback_matches_explicit_threshold_metric():
+    Psi, lats, levs = _build_threshold_only_psi()
+
+    phi_with_fallback = TropD_Metric_PSI(
+        Psi, lats, levs, method="Psi_500", field_type="PSI", threshold=0.1
+    )
+    phi_threshold = TropD_Metric_PSI(
+        Psi, lats, levs, method="Psi_500_10Perc", field_type="PSI", threshold=0.1
+    )
+
+    for phi_fallback, phi_explicit in zip(phi_with_fallback, phi_threshold):
+        assert np.allclose(phi_fallback, phi_explicit, equal_nan=True)
+
+
+def test_psi_threshold_rejects_negative_values():
+    Psi, lats, levs = _build_threshold_only_psi()
+
+    with pytest.raises(ValueError):
+        TropD_Metric_PSI(Psi, lats, levs, field_type="PSI", threshold=-0.1)
 
 
 

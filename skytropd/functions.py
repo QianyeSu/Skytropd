@@ -10,6 +10,8 @@ except ImportError:
     from scipy.integrate import cumtrapz
 from scipy.interpolate import interp1d
 
+from ._fortran_zero_crossing import fortran_zero_crossing
+
 try:
     trapezoid = np.trapezoid
 except AttributeError:
@@ -398,12 +400,60 @@ def TropD_Calculate_TropopauseHeight(
         return Pt
 
 
+def _zero_crossing_python(
+    F_last_axis: np.ndarray, lat: np.ndarray, lat_uncertainty: float
+) -> np.ndarray:
+    """Pure Python implementation used when the Fortran backend is unavailable."""
+
+    # Find all sign changes
+    D = np.diff(np.sign(F_last_axis), axis=-1)
+
+    # initialize for looping
+    ZC = np.full(D.shape[:-1], np.nan)
+    # find zero crossings looping over all latitude bands
+    for i in range(ZC.size):
+        iband = np.unravel_index(i, ZC.shape)
+        Di = D[iband]
+        Fi = F_last_axis[iband]
+
+        # Make sure a zero crossing exists
+        if not (np.any(Fi > 0) and np.any(Fi < 0)):
+            continue  # no sign changes
+
+        # get indices of all sign changes
+        a = Di.nonzero()[0]
+        a = a[np.isfinite(Di[a])]
+        # If more than one zero crossing of same sign exists
+        # in proximity to the first zero crossing.
+        if a.size > 2 and np.abs(lat[a[2]] - lat[a[0]]) < lat_uncertainty:
+            continue
+
+        # first sign change
+        if a.size != 0:
+            a1 = a[0]
+
+            # if there is an exact zero, use its latitude...
+            if np.abs(Di[a1]) == 1:
+                ZC[iband] = lat[a1 + 1]
+            else:  # np.abs(D[a1]) == 2 (directly from + to - or - to +)
+                ZC[iband] = (
+                    -Fi[a1] * (lat[a1 + 1] - lat[a1]) / (Fi[a1 + 1] - Fi[a1]) + lat[a1]
+                )
+
+    return ZC
+
+
 # Converted to python by Paul Staten Jul.29.2017
 def TropD_Calculate_ZeroCrossing(
     F: np.ndarray, lat: np.ndarray, lat_uncertainty: float = 0.0, axis: int = -1
 ) -> np.ndarray:
     """
-    Find the first (with increasing index) zero crossing of the function F
+    Find the first (with increasing index) zero crossing of the function F.
+
+    When the optional compiled backend is present, this function uses the optimized
+    Fortran implementation for the per-latitude-band search. If the extension was not
+    built or cannot be imported, it falls back to the original pure Python
+    implementation.
 
     Parameters
     ----------
@@ -443,43 +493,11 @@ def TropD_Calculate_ZeroCrossing(
     axes_list = list(range(F.ndim))
     axes_list[axis], axes_list[-1] = axes_list[-1], axes_list[axis]
     F = F.transpose(axes_list)
+    F_shape = F.shape[:-1]
+    F_flat = F.reshape(-1, lat.size)
 
-    # Find all sign changes
-    D = np.diff(np.sign(F), axis=-1)
+    ZC_fortran = fortran_zero_crossing(F_flat, lat, lat_uncertainty)
+    if ZC_fortran is not None:
+        return ZC_fortran.reshape(F_shape)
 
-    # initialize for looping
-    ZC = np.full(D.shape[:-1], np.nan)
-    # find zero crossings looping over all latitude bands
-    for i in range(ZC.size):
-        iband = np.unravel_index(i, ZC.shape)
-        Di = D[iband]
-        Fi = F[iband]
-
-        # Make sure a zero crossing exists
-        if not (np.any(Fi > 0) and np.any(Fi < 0)):
-            continue  # no sign changes
-
-        # get indices of all sign changes
-        a = Di.nonzero()[0]
-        a = a[np.isfinite(Di[a])]
-        # If more than one zero crossing of same sign exists
-        # in proximity to the first zero crossing.
-        if a.size > 2:
-            if np.abs(lat[a[2]] - lat[a[0]]) < lat_uncertainty:
-                continue
-
-        # first sign change
-        if np.size(a) !=0:
-            a1 = a[0]
-
-            # if there is an exact zero, use its latitude...
-            if np.abs(Di[a1]) == 1:
-                ZC[iband] = lat[a1 + 1]
-            else:  # np.abs(D[a1]) == 2 (directly from + to - or - to +)
-                ZC[iband] = (
-                    -Fi[a1] * (lat[a1 + 1] - lat[a1]) / (Fi[a1 + 1] - Fi[a1]) + lat[a1]
-                )
-        else:
-            ZC[iband]=np.NaN
-
-    return ZC
+    return _zero_crossing_python(F, lat, lat_uncertainty)

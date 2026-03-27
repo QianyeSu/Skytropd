@@ -188,12 +188,17 @@ def _psi_metric_latitude(
     lev: np.ndarray,
     method: str = "Psi_500",
     lat_uncertainty: float = 0.0,
+    threshold: Optional[float] = 0.1,
 ) -> np.ndarray:
     """Return HC edge latitude from a precomputed mass streamfunction."""
 
     Psi = np.asarray(Psi)
     lat = np.asarray(lat)
     lev = np.asarray(lev)
+    if threshold is not None:
+        threshold = float(threshold)
+        if threshold < 0.0:
+            raise ValueError("threshold must be non-negative or None")
     if Psi.shape[-2:] != (lat.size, lev.size):
         raise ValueError(
             f"final dimensions on Psi {Psi.shape[-2:]} and grid "
@@ -244,13 +249,23 @@ def _psi_metric_latitude(
     lat_in_between = (lat_masked <= Pmin_lat_masked[..., None]) & lat_after_Pmax
     Plat_in_between = np.where(lat_in_between, P[..., mask], np.nan)
 
-    if method == "Psi_500_10Perc":
+    def _psi_threshold_crossing(threshold_value: float) -> np.ndarray:
         Pmax = P[..., subpolar_mask].max(axis=-1)[..., None]
-        Phi = TropD_Calculate_ZeroCrossing(Plat_in_between - 0.1 * Pmax, lat_masked)
+        return TropD_Calculate_ZeroCrossing(
+            Plat_in_between - threshold_value * Pmax,
+            lat_masked,
+            lat_uncertainty=lat_uncertainty,
+        )
+
+    if method == "Psi_500_10Perc":
+        threshold_value = 0.1 if threshold is None else threshold
+        Phi = _psi_threshold_crossing(threshold_value)
     else:
         Phi = TropD_Calculate_ZeroCrossing(
             Plat_in_between, lat_masked, lat_uncertainty=lat_uncertainty
         )
+        if threshold is not None:
+            Phi = np.where(np.isnan(Phi), _psi_threshold_crossing(threshold), Phi)
 
     return Phi
 
@@ -619,6 +634,7 @@ def TropD_Metric_PSI(
     method: str = "Psi_500",
     lat_uncertainty: float = 0.0,
     field_type: str = "V",
+    threshold: Optional[float] = 0.1,
 ) -> np.ndarray:
     """
     TropD Mass Streamfunction (PSI) Metric
@@ -641,8 +657,9 @@ def TropD_Metric_PSI(
         Method of determining which Psi zero crossing to return, by default "Psi_500":
 
         * "Psi_500": Zero crossing of the streamfunction (Psi) at 500hPa
-        * "Psi_500_10Perc": Crossing of 10% of the extremum value of Psi in each
-                            hemisphere at the 500hPa level
+        * "Psi_500_10Perc": Crossing of ``threshold`` times the extremum value of Psi
+                            in each hemisphere at the 500hPa level. The historical
+                            method name is retained and defaults to ``threshold=0.1``.
         * "Psi_300_700": Zero crossing of Psi vertically averaged between the 300hPa
                          and 700 hPa levels
         * "Psi_500_Int": Zero crossing of the vertically-integrated Psi at 500 hPa
@@ -656,6 +673,14 @@ def TropD_Metric_PSI(
     field_type : {"V", "PSI"}, optional
         Specifies whether the first argument is zonal-mean meridional wind or a
         precomputed mass streamfunction, by default ``"V"``
+    threshold : float or None, optional
+        Threshold fraction used for the threshold-crossing HC edge. For
+        ``method="Psi_500_10Perc"``, this is the threshold applied directly.
+        For the other PSI methods, if the zero crossing cannot be found and the
+        result would otherwise be NaN, the metric falls back to the latitude
+        where Psi first crosses ``threshold`` times ``Pmax`` between the subtropical
+        maximum and minimum. Set to ``None`` to disable this fallback. By
+        default 0.1.
 
     Returns
     -------
@@ -682,7 +707,12 @@ def TropD_Metric_PSI(
         raise ValueError("field_type must be one of 'V' or 'PSI'")
 
     return _psi_metric_latitude(
-        Psi, lat, lev, method=method, lat_uncertainty=lat_uncertainty
+        Psi,
+        lat,
+        lev,
+        method=method,
+        lat_uncertainty=lat_uncertainty,
+        threshold=threshold,
     )
 
 

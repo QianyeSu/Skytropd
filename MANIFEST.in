@@ -1,3 +1,5 @@
 recursive-include ValidationData *.nc
 recursive-include ValidationMetrics *.nc
-
+recursive-include skytropd *.c
+recursive-include skytropd *.f90
+recursive-include skytropd meson.build
