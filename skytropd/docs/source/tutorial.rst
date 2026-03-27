@@ -52,4 +52,21 @@ If you already have a precomputed mass streamfunction field, you can calculate t
 
   In [8]: print(Phi_sh, Phi_nh)
 
+When the PSI metric does not contain a detectable zero crossing, you can let
+``TropD_Metric_PSI`` fall back to a threshold crossing of the streamfunction
+extremum. By default ``threshold=0.1``, so methods such as ``"Psi_500"`` and
+``"Psi_300_700"`` will return the latitude where Psi first crosses ``0.1 * Pmax``
+instead of ``NaN``. Set ``threshold=None`` to disable this fallback.
+
+.. code-block:: python
+
+  In [9]: Phi_sh, Phi_nh = pyt.TropD_Metric_PSI(
+     ...:     Psi, lat, lev, method="Psi_500", field_type="PSI", threshold=0.1
+     ...: )
+
+  In [10]: print(Phi_sh, Phi_nh)
+
+The historical method name ``"Psi_500_10Perc"`` remains available and uses the
+same threshold-crossing calculation directly.
+
 More detailed code examples can be found in the file ``TropD_Example_Calculations.py``.
