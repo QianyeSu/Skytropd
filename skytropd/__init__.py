@@ -1,5 +1,5 @@
 # cleaning up namespace - sjs 1.27.22
-__version__ = "2.13.0"
+__version__ = "2.13.1"
 
 # let's only use these modules if the user has installed them
 try:
