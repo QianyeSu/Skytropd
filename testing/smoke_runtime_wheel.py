@@ -13,7 +13,7 @@ def main() -> None:
     phi = pyt.TropD_Calculate_MaxLat(field, lat)
     assert np.isfinite(phi)
 
-    zc_field = np.array([-3.0, -2.0, -1.0, 1.0, 2.0])
+    zc_field = np.linspace(-5.0, 5.0, lat.size)
     zc = pyt.TropD_Calculate_ZeroCrossing(zc_field, lat)
     assert np.isfinite(zc)
 
