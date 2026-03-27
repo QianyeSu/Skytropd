@@ -99,13 +99,21 @@ jobs:
           with zipfile.ZipFile(wheel) as zf:
               names = set(zf.namelist())
           required = {
+              'skytropd/__init__.py',
+              'skytropd/functions.py',
+              'skytropd/metrics.py',
               'skytropd/tutorial.py',
-              'skytropd/ValidationData/va.nc',
-              'skytropd/ValidationMetrics/EDJ.nc',
           }
           missing = sorted(required - names)
           if missing:
               raise SystemExit(f'Missing files in wheel: {missing}')
+          forbidden = sorted(
+              name for name in names
+              if name.startswith('skytropd/ValidationData/')
+              or name.startswith('skytropd/ValidationMetrics/')
+          )
+          if forbidden:
+              raise SystemExit(f'Unexpected validation resources in wheel: {forbidden[:5]}')
           print(f'Verified wheel: {wheel.name}')
           PY
 
