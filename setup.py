@@ -49,8 +49,23 @@ class MesonBuildExt(build_ext):
 
         env = self._build_environment()
         self._require_tool("ninja", env)
-        self._require_compiler("gfortran", env)
-        self._require_compiler("gcc", env)
+        c_compiler = self._require_compiler(
+            env,
+            env_vars=("CC",),
+            candidates=("cc", "clang", "gcc"),
+            label="C compiler",
+        )
+        fortran_compiler = self._require_compiler(
+            env,
+            env_vars=("FC", "F77", "F90"),
+            candidates=("gfortran",),
+            label="Fortran compiler",
+        )
+
+        env["CC"] = c_compiler
+        env["FC"] = fortran_compiler
+        env["F77"] = fortran_compiler
+        env["F90"] = fortran_compiler
 
         build_dir = Path(self.build_temp) / "meson-zero-crossing"
         if build_dir.exists():
@@ -94,17 +109,57 @@ class MesonBuildExt(build_ext):
                     path_entries.insert(0, str(candidate))
         env["PATH"] = os.pathsep.join(path_entries)
 
-        for compiler_var, executable in {
-            "CC": "gcc",
-            "FC": "gfortran",
-            "F77": "gfortran",
-            "F90": "gfortran",
-        }.items():
-            resolved = shutil.which(executable, path=env["PATH"])
-            if resolved:
-                env[compiler_var] = resolved
+        c_compiler = self._find_executable(env, ("CC",), ("cc", "clang", "gcc"))
+        if c_compiler:
+            env["CC"] = c_compiler
+
+        fortran_compiler = self._find_executable(env, ("FC", "F77", "F90"), ("gfortran",))
+        if fortran_compiler:
+            env["FC"] = fortran_compiler
+            env["F77"] = fortran_compiler
+            env["F90"] = fortran_compiler
 
         return env
+
+    def _find_executable(self, env, env_vars, candidates):
+        for env_var in env_vars:
+            configured = env.get(env_var)
+            if not configured:
+                continue
+            resolved = shutil.which(configured, path=env["PATH"])
+            if resolved:
+                return resolved
+            configured_path = Path(configured)
+            if configured_path.is_file():
+                return str(configured_path.resolve())
+
+        for candidate in candidates:
+            resolved = shutil.which(candidate, path=env["PATH"])
+            if resolved:
+                return resolved
+
+            versioned = self._find_versioned_executable(candidate, env)
+            if versioned:
+                return versioned
+
+        return None
+
+    def _find_versioned_executable(self, prefix, env):
+        for entry in env.get("PATH", "").split(os.pathsep):
+            if not entry:
+                continue
+            path = Path(entry)
+            if not path.is_dir():
+                continue
+            matches = sorted(
+                candidate
+                for candidate in path.glob(f"{prefix}-*")
+                if candidate.is_file()
+                and candidate.name.startswith(f"{prefix}-")
+                and candidate.name[len(prefix) + 1 :].isdigit()
+            )
+            if matches:
+                return str(matches[-1])
 
     def _require_tool(self, tool_name, env):
         if shutil.which(tool_name, path=env["PATH"]) is None:
@@ -113,12 +168,17 @@ class MesonBuildExt(build_ext):
                 f"Install it or set {FORTRAN_SKIP_ENV}=1 to skip the backend."
             )
 
-    def _require_compiler(self, compiler_name, env):
-        if shutil.which(compiler_name, path=env["PATH"]) is None:
+    def _require_compiler(self, env, env_vars, candidates, label):
+        resolved = self._find_executable(env, env_vars, candidates)
+        if resolved is None:
+            configured = ", ".join(env_vars)
+            searched = ", ".join(candidates)
             raise RuntimeError(
-                f"required compiler '{compiler_name}' was not found in PATH. "
-                f"Install it or set {FORTRAN_SKIP_ENV}=1 to skip the backend."
+                f"required {label} was not found in PATH or via {configured}. "
+                f"Searched for {searched}. Install it or set {FORTRAN_SKIP_ENV}=1 "
+                "to skip the backend."
             )
+        return resolved
 
     def _run(self, cmd, env):
         subprocess.run(cmd, check=True, env=env, cwd=PROJECT_ROOT)
