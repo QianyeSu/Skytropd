@@ -330,34 +330,6 @@ def _quadratic_peak_fit_last_axis(
     return phi.reshape(out_shape), umax.reshape(out_shape)
 
 
-def _tpb_hemisphere_view(
-    field: np.ndarray,
-    lat: np.ndarray,
-    hemisphere: str,
-    overlap_equator: bool = True,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Return a hemisphere slice ordered like the original wrapper logic."""
-
-    field = np.asarray(field)
-    lat = np.asarray(lat, dtype=float)
-
-    if hemisphere == "SH":
-        mask = lat < (0.5 if overlap_equator else 0.0)
-        hem_lat = -lat[mask]
-    elif hemisphere == "NH":
-        mask = lat > (-0.5 if overlap_equator else 0.0)
-        hem_lat = lat[mask]
-    else:
-        raise ValueError(f"unsupported hemisphere {hemisphere}")
-
-    hem_field = field[..., mask]
-    if hem_lat.size and hem_lat[-1] < hem_lat[0]:
-        hem_lat = hem_lat[::-1]
-        hem_field = hem_field[..., ::-1]
-
-    return hem_field, hem_lat
-
-
 def _psi_metric_latitude(
     Psi: np.ndarray,
     lat: np.ndarray,
@@ -1042,6 +1014,7 @@ def TropD_Metric_STJ(
         return Phi, Umax  # type: ignore
 
 
+@hemisphere_handler
 def TropD_Metric_TPB(
     T: np.ndarray,
     lat: np.ndarray,
@@ -1050,7 +1023,7 @@ def TropD_Metric_TPB(
     Z: Optional[np.ndarray] = None,
     Cutoff: float = 1.5e4,
     **maxlat_kwargs,
-) -> Tuple[np.ndarray, ...]:
+) -> np.ndarray:
     """
     TropD Tropopause Break (TPB) Metric
 
@@ -1091,15 +1064,13 @@ def TropD_Metric_TPB(
 
     Returns
     -------
-    Tuple[numpy.ndarray, ...]
-        Tropopause break latitude(s). Returns ``(PhiSH, PhiNH)`` for global input,
-        or a single-element tuple when only one hemisphere is provided.
+    Phi : numpy.ndarray (dim1, ..., dimN-2)
+        N-2 dimensional latitudes of the tropopause break
     """
 
     T = np.asarray(T)
     lat = np.asarray(lat)
     lev = np.asarray(lev)
-    maxlat_kwargs.pop("hem", None)
     if T.shape[-2:] != (lat.size, lev.size):
         raise ValueError(
             f"final dimensions on T {T.shape[-2:]} and grid "
@@ -1114,14 +1085,9 @@ def TropD_Metric_TPB(
         if Z is not None:
             Z = Z[..., ::-1, :]
 
-    has_shem = (lat < -20.0).any()
-    has_nhem = (lat > 20.0).any()
-    if not (has_shem or has_nhem):
-        return tuple()
-
     polar_boundary = 60.0
     eq_boundary = 0.0
-    phi_list = []
+    mask = (lat > eq_boundary) & (lat < polar_boundary)
 
     if "max_" in method:  # 'max_gradient' or 'max_potemp'
         if method == "max_potemp":
@@ -1134,43 +1100,20 @@ def TropD_Metric_TPB(
             F = np.diff(Pt, axis=-1) / (lat[1] - lat[0])
             lat = (lat[1:] + lat[:-1]) / 2.0
             F *= np.sign(lat)
+            # redefine mask b/c we have new grid points
+            mask = (lat > eq_boundary) & (lat < polar_boundary)
         F = np.where(np.isfinite(F), F, 0.0)
 
-        if has_shem:
-            F_sh, lat_sh = _tpb_hemisphere_view(
-                F, lat, "SH", overlap_equator=(method == "max_potemp")
-            )
-            mask = (lat_sh > eq_boundary) & (lat_sh < polar_boundary)
-            phi_list.append(
-                -TropD_Calculate_MaxLat(F_sh[..., mask], lat_sh[mask], **maxlat_kwargs)
-            )
-        if has_nhem:
-            F_nh, lat_nh = _tpb_hemisphere_view(
-                F, lat, "NH", overlap_equator=(method == "max_potemp")
-            )
-            mask = (lat_nh > eq_boundary) & (lat_nh < polar_boundary)
-            phi_list.append(
-                TropD_Calculate_MaxLat(F_nh[..., mask], lat_nh[mask], **maxlat_kwargs)
-            )
+        Phi = TropD_Calculate_MaxLat(F[..., mask], lat[mask], **maxlat_kwargs)
 
     else:  # method == 'cutoff'
         if Z is None:
             raise ValueError('Z must be provided when method = "cutoff"')
         Pt, Ht = TropD_Calculate_TropopauseHeight(T, lev, Z)
-        if has_shem:
-            Ht_sh, lat_sh = _tpb_hemisphere_view(Ht, lat, "SH", overlap_equator=True)
-            mask = (lat_sh > eq_boundary) & (lat_sh < polar_boundary)
-            phi_list.append(
-                -TropD_Calculate_ZeroCrossing(Ht_sh[..., mask] - Cutoff, lat_sh[mask])
-            )
-        if has_nhem:
-            Ht_nh, lat_nh = _tpb_hemisphere_view(Ht, lat, "NH", overlap_equator=True)
-            mask = (lat_nh > eq_boundary) & (lat_nh < polar_boundary)
-            phi_list.append(
-                TropD_Calculate_ZeroCrossing(Ht_nh[..., mask] - Cutoff, lat_nh[mask])
-            )
 
-    return tuple(phi_list)
+        Phi = TropD_Calculate_ZeroCrossing(Ht[..., mask] - Cutoff, lat[mask])
+
+    return Phi
 
 
 @hemisphere_handler
