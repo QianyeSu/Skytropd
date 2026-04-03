@@ -1,6 +1,10 @@
 import numpy as np
 import pytest
+from pathlib import Path
+from scipy.interpolate import interp1d
 from skytropd.functions import (
+    KAPPA,
+    SPEC_HEAT_PRES_DRY,
     find_nearest,
     TropD_Calculate_MaxLat,
     TropD_Calculate_Mon2Season,
@@ -12,6 +16,69 @@ from skytropd.functions import (
 
 EARTH_RADIUS = 6371220.0
 GRAV = 9.80616
+
+
+def _reference_tropopause_height(T, P, Z=None):
+    compute_z = Z is not None
+
+    T = np.atleast_2d(T)
+    if compute_z:
+        Z = np.atleast_2d(Z)
+    if T.shape[-1] != P.size:
+        raise ValueError
+
+    if P[-1] > P[0]:
+        P = P[::-1]
+        T = T[..., ::-1]
+        if compute_z:
+            Z = Z[..., ::-1]
+
+    Pk = (P * 100.0) ** KAPPA
+    Pk_mid = (Pk[:-1] + Pk[1:]) / 2.0
+    T_mid = (T[..., :-1] + T[..., 1:]) / 2.0
+    Gamma = (
+        np.diff(T, axis=-1)
+        / np.diff(Pk)
+        * Pk_mid
+        / T_mid
+        * GRAV
+        / SPEC_HEAT_PRES_DRY
+        * 1000.0
+    )
+
+    PI = (np.linspace(1000.0, 1.0, 1000) * 100.0) ** KAPPA
+    GI = interp1d(Pk_mid, Gamma, kind="linear", axis=-1, fill_value="extrapolate")(PI)
+    TI = interp1d(Pk_mid, T_mid, kind="linear", axis=-1, fill_value="extrapolate")(PI)
+    trop_layer = (
+        (GI <= 2.0) & (PI < (550.0 * 100.0) ** KAPPA) & (PI > (75.0 * 100.0) ** KAPPA)
+    )
+
+    Pt = np.full_like(T[..., 0], np.nan)
+    for i in range(Pt.size):
+        icol = np.unravel_index(i, Pt.shape)
+        if trop_layer[icol].any():
+            idx = trop_layer[icol].nonzero()[0]
+            Pidx = PI[idx]
+            Pidx_2km = Pidx - (
+                2000.0 * GRAV / SPEC_HEAT_PRES_DRY / TI[icol + (idx,)] * Pidx
+            )
+
+            for c in range(Pidx.size):
+                idx2km = find_nearest(PI, Pidx_2km[c])
+                if (GI[icol + (slice(idx[c], idx2km + 1),)] <= 2.0).all():
+                    Pt[icol] = Pidx[c]
+                    break
+
+    Pt = Pt ** (1.0 / KAPPA) / 100.0
+
+    if compute_z:
+        Ht = np.zeros_like(Pt)
+        for i in range(Ht.size):
+            icol = np.unravel_index(i, Ht.shape)
+            Ht[icol] = interp1d(P, Z[icol], axis=-1)(Pt[icol])
+        return Pt, Ht
+
+    return Pt
 
 
 class TestFindNearest:
@@ -183,6 +250,60 @@ class TestStreamFunction:
     def test_mismatch(self):
         with pytest.raises(ValueError):
             self.test_functionality(slice_end=-2)
+
+
+class TestTropopauseHeight:
+    def _load_validation_case(self):
+        xr = pytest.importorskip("xarray")
+        data_dir = Path(__file__).resolve().parents[1] / "ValidationData"
+        with xr.open_dataset(data_dir / "ta.nc") as tds, xr.open_dataset(
+            data_dir / "zg.nc"
+        ) as zds:
+            T = (
+                tds["ta"]
+                .isel(time=slice(0, 3))
+                .transpose("time", "lat", "lev")
+                .load()
+                .values
+            )
+            Z = (
+                zds["zg"]
+                .isel(time=slice(0, 3))
+                .transpose("time", "lat", "lev")
+                .load()
+                .values
+            )
+            P = tds["lev"].values
+        return T, P, Z
+
+    def test_matches_reference_without_z(self):
+        T, P, _ = self._load_validation_case()
+
+        expected = _reference_tropopause_height(T, P)
+        actual = TropD_Calculate_TropopauseHeight(T, P)
+
+        assert np.allclose(actual, expected, equal_nan=True)
+
+    def test_matches_reference_with_z(self):
+        T, P, Z = self._load_validation_case()
+
+        expected_pt, expected_ht = _reference_tropopause_height(T, P, Z)
+        actual_pt, actual_ht = TropD_Calculate_TropopauseHeight(T, P, Z)
+
+        assert np.allclose(actual_pt, expected_pt, equal_nan=True)
+        assert np.allclose(actual_ht, expected_ht, equal_nan=True, atol=1e-10)
+
+    def test_matches_reference_with_increasing_pressure(self):
+        T, P, Z = self._load_validation_case()
+        T_inc = T[..., ::-1]
+        Z_inc = Z[..., ::-1]
+        P_inc = P[::-1]
+
+        expected_pt, expected_ht = _reference_tropopause_height(T_inc, P_inc, Z_inc)
+        actual_pt, actual_ht = TropD_Calculate_TropopauseHeight(T_inc, P_inc, Z_inc)
+
+        assert np.allclose(actual_pt, expected_pt, equal_nan=True)
+        assert np.allclose(actual_ht, expected_ht, equal_nan=True, atol=1e-10)
 
 
 class TestZeroCrossing:
