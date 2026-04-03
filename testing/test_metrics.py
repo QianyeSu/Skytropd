@@ -1,11 +1,16 @@
+from functools import lru_cache
+from pathlib import Path
 import numpy as np
 import pytest
 from scipy.interpolate import interp1d
+import xarray as xr
 
 from skytropd.functions import (
+    KAPPA,
     find_nearest,
     TropD_Calculate_MaxLat,
     TropD_Calculate_StreamFunction,
+    TropD_Calculate_TropopauseHeight,
     TropD_Calculate_ZeroCrossing,
 )
 from skytropd.metrics import (
@@ -13,6 +18,7 @@ from skytropd.metrics import (
     TropD_Metric_PE,
     TropD_Metric_PSI,
     TropD_Metric_STJ,
+    TropD_Metric_TPB,
 )
 
 
@@ -124,6 +130,114 @@ def _reference_quadratic_peak_fit(field, lat_mask, n_fit=1):
         ) / 4.0 / coeffs[2]
 
     return phi, umax
+
+
+def _reference_metric_tpb_single_hemisphere(
+    T, lat, lev, method="max_gradient", Z=None, Cutoff=1.5e4, **maxlat_kwargs
+):
+    T = np.asarray(T)
+    lat = np.asarray(lat)
+    lev = np.asarray(lev)
+    if Z is not None:
+        Z = np.asarray(Z)
+
+    if T.shape[-2:] != (lat.size, lev.size):
+        raise ValueError
+    if method not in ["max_gradient", "max_potemp", "cutoff"]:
+        raise ValueError
+
+    if lat[-1] < lat[0]:
+        lat = lat[::-1]
+        T = T[..., ::-1, :]
+        if Z is not None:
+            Z = Z[..., ::-1, :]
+
+    polar_boundary = 60.0
+    eq_boundary = 0.0
+    mask = (lat > eq_boundary) & (lat < polar_boundary)
+
+    if "max_" in method:
+        if method == "max_potemp":
+            maxlat_kwargs["n"] = maxlat_kwargs.get("n", 30)
+            PT = T / (lev / 1000.0) ** KAPPA
+            Pt, PTt = TropD_Calculate_TropopauseHeight(T, lev, Z=PT)
+            F = PTt - np.nanmin(PT, axis=-1)
+        else:
+            Pt = TropD_Calculate_TropopauseHeight(T, lev, Z=None)
+            F = np.diff(Pt, axis=-1) / (lat[1] - lat[0])
+            lat = (lat[1:] + lat[:-1]) / 2.0
+            F *= np.sign(lat)
+            mask = (lat > eq_boundary) & (lat < polar_boundary)
+        F = np.where(np.isfinite(F), F, 0.0)
+        return TropD_Calculate_MaxLat(F[..., mask], lat[mask], **maxlat_kwargs)
+
+    if Z is None:
+        raise ValueError
+    Pt, Ht = TropD_Calculate_TropopauseHeight(T, lev, Z)
+    return TropD_Calculate_ZeroCrossing(Ht[..., mask] - Cutoff, lat[mask])
+
+
+def _reference_metric_tpb_oldstyle(
+    T, lat, lev, method="max_gradient", Z=None, Cutoff=1.5e4, **maxlat_kwargs
+):
+    T = np.asarray(T)
+    lat = np.asarray(lat)
+    if Z is not None:
+        Z = np.asarray(Z)
+
+    phi_list = []
+    if (lat < -20.0).any():
+        shmask = lat < 0.5
+        phi_sh = _reference_metric_tpb_single_hemisphere(
+            T[..., shmask, :],
+            -lat[shmask],
+            lev,
+            method=method,
+            Z=None if Z is None else Z[..., shmask, :],
+            Cutoff=Cutoff,
+            **dict(maxlat_kwargs),
+        )
+        phi_list.append(-phi_sh)
+    if (lat > 20.0).any():
+        nhmask = lat > -0.5
+        phi_nh = _reference_metric_tpb_single_hemisphere(
+            T[..., nhmask, :],
+            lat[nhmask],
+            lev,
+            method=method,
+            Z=None if Z is None else Z[..., nhmask, :],
+            Cutoff=Cutoff,
+            **dict(maxlat_kwargs),
+        )
+        phi_list.append(phi_nh)
+
+    return tuple(phi_list)
+
+
+@lru_cache(maxsize=1)
+def _load_validation_tpb_sample():
+    data_dir = Path(__file__).resolve().parents[1] / "ValidationData"
+    with xr.open_dataset(data_dir / "ta.nc") as tds, xr.open_dataset(
+        data_dir / "zg.nc"
+    ) as zds:
+        temperature = (
+            tds["ta"]
+            .isel(time=slice(0, 3))
+            .transpose("time", "lat", "lev")
+            .load()
+            .values
+        )
+        geopotential = (
+            zds["zg"]
+            .isel(time=slice(0, 3))
+            .transpose("time", "lat", "lev")
+            .load()
+            .values
+        )
+        lat = tds["lat"].values
+        lev = tds["lev"].values
+
+    return temperature, geopotential, lat, lev
 
 
 def _build_fit_test_wind():
@@ -280,6 +394,44 @@ def test_metric_stj_fit_matches_reference():
 
     assert np.allclose(actual_phi, expected_phi, equal_nan=True)
     assert np.allclose(actual_umax, expected_umax, equal_nan=True)
+
+
+@pytest.mark.parametrize("method", ["max_gradient", "max_potemp", "cutoff"])
+def test_metric_tpb_matches_oldstyle_reference(method):
+    temperature, geopotential, lat, lev = _load_validation_tpb_sample()
+    kwargs = {"method": method}
+    if method == "cutoff":
+        kwargs["Z"] = geopotential
+
+    expected = _reference_metric_tpb_oldstyle(temperature, lat, lev, **kwargs)
+    actual = TropD_Metric_TPB(temperature, lat, lev, **kwargs)
+
+    assert len(actual) == len(expected) == 2
+    for actual_phi, expected_phi in zip(actual, expected):
+        assert np.allclose(actual_phi, expected_phi, equal_nan=True)
+
+
+def test_metric_tpb_single_hemisphere_return_matches_oldstyle_reference():
+    temperature, geopotential, lat, lev = _load_validation_tpb_sample()
+    nhmask = lat > -0.5
+
+    expected = _reference_metric_tpb_oldstyle(
+        temperature[..., nhmask, :],
+        lat[nhmask],
+        lev,
+        method="cutoff",
+        Z=geopotential[..., nhmask, :],
+    )
+    actual = TropD_Metric_TPB(
+        temperature[..., nhmask, :],
+        lat[nhmask],
+        lev,
+        method="cutoff",
+        Z=geopotential[..., nhmask, :],
+    )
+
+    assert len(actual) == len(expected) == 1
+    assert np.allclose(actual[0], expected[0], equal_nan=True)
 
 
 
