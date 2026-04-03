@@ -182,6 +182,45 @@ def hemisphere_handler(
     return wrapped_metric_func
 
 
+def _interp_last_axis_common_grid(
+    x: np.ndarray, xp: np.ndarray, fp: np.ndarray
+) -> np.ndarray:
+    """Vectorized linear interpolation for profiles that share a common x-grid."""
+
+    x = np.asarray(x, dtype=float)
+    xp = np.asarray(xp, dtype=float)
+    fp = np.asarray(fp)
+
+    if xp.ndim != 1:
+        raise ValueError("xp must be one-dimensional")
+    if fp.shape[-1] != xp.size:
+        raise ValueError(
+            f"fp last axis of size {fp.shape[-1]} is not aligned with xp size {xp.size}"
+        )
+    if x.shape != fp.shape[:-1]:
+        raise ValueError(
+            f"x shape {x.shape} must match fp leading shape {fp.shape[:-1]}"
+        )
+
+    x_eval = np.where(np.isfinite(x), x, xp[0])
+    idx = np.searchsorted(xp, x_eval, side="right") - 1
+    idx = np.clip(idx, 0, xp.size - 2)
+
+    x0 = xp[idx]
+    x1 = xp[idx + 1]
+    y0 = np.take_along_axis(fp, idx[..., None], axis=-1)[..., 0]
+    y1 = np.take_along_axis(fp, (idx + 1)[..., None], axis=-1)[..., 0]
+
+    frac = np.divide(
+        x_eval - x0,
+        x1 - x0,
+        out=np.zeros_like(x0, dtype=np.result_type(fp.dtype, float)),
+        where=x1 != x0,
+    )
+    out = y0 + frac * (y1 - y0)
+    return np.where(np.isfinite(x), out, np.nan)
+
+
 def _psi_metric_latitude(
     Psi: np.ndarray,
     lat: np.ndarray,
@@ -605,20 +644,19 @@ def TropD_Metric_PE(
 
     # first check if the (northward) gradient value at the
     # zero crossing is increasing poleward
-    pelat_increases_at_ZC = np.zeros_like(ZC1_lat_masked)
-    pe_grad_flat = pe_grad.reshape(-1, lat.size)
-    for i, ipe_grad in enumerate(pe_grad_flat):
-        i_unrav = np.unravel_index(i, pe_grad.shape[:-1])
-        interp_pe_grad = interp1d(lat, ipe_grad, axis=-1)
-        pelat_increases_at_ZC[i_unrav] = interp_pe_grad(ZC1_lat_masked.flatten()[i]) > 0
+    grad_at_ZC1 = _interp_last_axis_common_grid(ZC1_lat_masked, lat, pe_grad)
+    pelat_increases_at_ZC = np.isfinite(ZC1_lat_masked) & (grad_at_ZC1 > 0.0)
 
     # then get the next zero crossing for when we need it
     # first define regions poleward of zero crossing
-    lat_after_ZC = lat_masked > ZC1_lat_masked[..., None]
-    pelat_after_ZC = np.where(lat_after_ZC, pe[..., mask], np.nan)
-    ZC2_lat_masked = TropD_Calculate_ZeroCrossing(
-        pelat_after_ZC, lat_masked, lat_uncertainty=lat_uncertainty
-    )
+    ZC2_lat_masked = np.full_like(ZC1_lat_masked, np.nan)
+    needs_ZC2 = ~pelat_increases_at_ZC
+    if np.any(needs_ZC2):
+        lat_after_ZC = lat_masked > ZC1_lat_masked[needs_ZC2][..., None]
+        pelat_after_ZC = np.where(lat_after_ZC, pe[..., mask][needs_ZC2], np.nan)
+        ZC2_lat_masked[needs_ZC2] = TropD_Calculate_ZeroCrossing(
+            pelat_after_ZC, lat_masked, lat_uncertainty=lat_uncertainty
+        )
 
     # if the gradient is increasing poleward, use it, otherwise, use the next
     Phi = np.where(pelat_increases_at_ZC, ZC1_lat_masked, ZC2_lat_masked)
