@@ -221,6 +221,53 @@ def _interp_last_axis_common_grid(
     return np.where(np.isfinite(x), out, np.nan)
 
 
+def _interp_midpoint_field_to_grid(midpoint_field: np.ndarray, x: np.ndarray) -> np.ndarray:
+    """Interpolate midpoint values back to the original 1-D grid along the last axis."""
+
+    midpoint_field = np.asarray(midpoint_field)
+    x = np.asarray(x, dtype=float)
+
+    if x.ndim != 1:
+        raise ValueError("x must be one-dimensional")
+    if midpoint_field.shape[-1] != x.size - 1:
+        raise ValueError(
+            "midpoint_field last axis must be one smaller than the target x-grid"
+        )
+
+    out = np.empty(midpoint_field.shape[:-1] + (x.size,), dtype=midpoint_field.dtype)
+    out[..., 0] = midpoint_field[..., 0]
+    out[..., -1] = midpoint_field[..., -1]
+    if x.size > 2:
+        dx_prev = x[1:-1] - x[:-2]
+        dx_next = x[2:] - x[1:-1]
+        out[..., 1:-1] = (
+            midpoint_field[..., :-1] * dx_next + midpoint_field[..., 1:] * dx_prev
+        ) / (dx_prev + dx_next)
+    return out
+
+
+def _maxlat_last_axis_no_nan(F: np.ndarray, lat: np.ndarray, n: int) -> np.ndarray:
+    """Fast path for MaxLat when latitude is the last axis and there are no NaNs."""
+
+    F = np.asarray(F)
+    lat = np.asarray(lat, dtype=float)
+    if F.shape[-1] != lat.size:
+        raise ValueError(
+            f"last axis of F with size {F.shape[-1]} is not aligned with lat size {lat.size}"
+        )
+
+    Fmin = F.min(axis=-1, keepdims=True)
+    Frange = F.max(axis=-1, keepdims=True) - Fmin
+    scaled = np.divide(
+        F - Fmin,
+        Frange,
+        out=np.full_like(F, np.nan, dtype=np.result_type(F.dtype, float)),
+        where=Frange != 0,
+    )
+    weights = scaled**n
+    return trapezoid(weights * lat, lat, axis=-1) / trapezoid(weights, lat, axis=-1)
+
+
 def _psi_metric_latitude(
     Psi: np.ndarray,
     lat: np.ndarray,
@@ -602,16 +649,7 @@ def TropD_Metric_PE(
     # The gradient of PE is used to determine whether PE
     # becomes positive at the zero crossing
     dpedy = np.diff(pe, axis=-1)
-    lat_mid = (lat[:-1] + lat[1:]) / 2.0
-    # interpolate back to original grid, duplicating
-    # boundary behavior of np.interp
-    pe_grad = interp1d(
-        lat_mid,
-        dpedy,
-        axis=-1,
-        bounds_error=False,
-        fill_value=(dpedy[..., 0], dpedy[..., -1]),
-    )(lat)
+    pe_grad = _interp_midpoint_field_to_grid(dpedy, lat)
 
     # define latitudes of boundaries certain regions
     eq_boundary = 5.0
@@ -625,9 +663,7 @@ def TropD_Metric_PE(
     # find E-P maximum (P-E min) latitude in subtropics
     # first define the subpolar region to search, excluding poles due to low P-E
     subpolar_mask = (lat > eq_boundary) & (lat < subpolar_boundary)
-    Emax_lat_masked = TropD_Calculate_MaxLat(
-        -pe[..., subpolar_mask], lat[subpolar_mask], n=30
-    )
+    Emax_lat_masked = _maxlat_last_axis_no_nan(-pe[..., subpolar_mask], lat[subpolar_mask], n=30)
 
     # find zero crossings poleward of E-P max
     # first define regions poleward of E-P max in each hemisphere
