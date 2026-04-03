@@ -24,6 +24,74 @@ SPEC_HEAT_PRES_DRY = 1005.7
 KAPPA = GAS_CONSTANT_DRY / SPEC_HEAT_PRES_DRY
 
 
+def _interp_last_axis_monotonic_grid(
+    x: np.ndarray, xp: np.ndarray, fp: np.ndarray
+) -> np.ndarray:
+    """Vectorized linear interpolation on a monotonic 1-D grid."""
+
+    x = np.asarray(x, dtype=float)
+    xp = np.asarray(xp, dtype=float)
+    fp = np.asarray(fp)
+
+    if xp.ndim != 1:
+        raise ValueError("xp must be one-dimensional")
+    if fp.shape[-1] != xp.size:
+        raise ValueError(
+            f"fp last axis of size {fp.shape[-1]} is not aligned with xp size {xp.size}"
+        )
+    if x.shape != fp.shape[:-1]:
+        raise ValueError(
+            f"x shape {x.shape} must match fp leading shape {fp.shape[:-1]}"
+        )
+
+    if xp.size < 2:
+        raise ValueError("xp must contain at least two points")
+    if xp[0] > xp[-1]:
+        xp = xp[::-1]
+        fp = fp[..., ::-1]
+
+    x_eval = np.where(np.isfinite(x), x, xp[0])
+    idx = np.searchsorted(xp, x_eval, side="right") - 1
+    idx = np.clip(idx, 0, xp.size - 2)
+
+    x0 = xp[idx]
+    x1 = xp[idx + 1]
+    y0 = np.take_along_axis(fp, idx[..., None], axis=-1)[..., 0]
+    y1 = np.take_along_axis(fp, (idx + 1)[..., None], axis=-1)[..., 0]
+
+    frac = np.divide(
+        x_eval - x0,
+        x1 - x0,
+        out=np.zeros_like(x0, dtype=np.result_type(fp.dtype, float)),
+        where=x1 != x0,
+    )
+    out = y0 + frac * (y1 - y0)
+    return np.where(np.isfinite(x), out, np.nan)
+
+
+def _nearest_indices_descending_grid(grid_desc: np.ndarray, values: np.ndarray) -> np.ndarray:
+    """Return nearest indices on a descending 1-D grid for an array of values."""
+
+    grid_desc = np.asarray(grid_desc, dtype=float)
+    values = np.asarray(values, dtype=float)
+
+    if grid_desc.ndim != 1:
+        raise ValueError("grid_desc must be one-dimensional")
+    if grid_desc.size == 0:
+        raise ValueError("grid_desc must not be empty")
+
+    grid_inc = grid_desc[::-1]
+    right_idx_inc = np.searchsorted(grid_inc, values, side="left")
+    n = grid_desc.size
+
+    upper_idx = np.clip(n - 1 - right_idx_inc, 0, n - 1)
+    lower_idx = np.clip(n - right_idx_inc, 0, n - 1)
+
+    upper_dist = np.abs(grid_desc[upper_idx] - values)
+    lower_dist = np.abs(grid_desc[lower_idx] - values)
+    return np.where(lower_dist < upper_dist, lower_idx, upper_idx)
+
+
 def find_nearest(
     array: np.ndarray, value: float, axis: Optional[int] = None, skipna: bool = False
 ) -> np.ndarray:
@@ -362,38 +430,22 @@ def TropD_Calculate_TropopauseHeight(
     trop_layer = (
         (GI <= 2.0) & (PI < (550.0 * 100.0) ** KAPPA) & (PI > (75.0 * 100.0) ** KAPPA)
     )
-    Pt = np.full_like(T[..., 0], np.nan)
-    # loop over each individual column
-    for i in range(Pt.size):
-        icol = np.unravel_index(i, Pt.shape)
-        if trop_layer[icol].any():
-            # get pressure levels of potential points in the column
-            idx = trop_layer[icol].nonzero()[0]
-            Pidx = PI[idx]
-            # get pressure level of 2km above potential tropopause pts
-            Pidx_2km = Pidx - (
-                2000.0 * GRAV / SPEC_HEAT_PRES_DRY / TI[icol + (idx,)] * Pidx
-            )
+    candidate_top = PI - 2000.0 * GRAV / SPEC_HEAT_PRES_DRY / TI * PI
+    idx2km = _nearest_indices_descending_grid(PI, candidate_top)
+    first_bad_idx = np.where(GI > 2.0, np.arange(PI.size), PI.size)
+    first_bad_idx = np.minimum.accumulate(first_bad_idx[..., ::-1], axis=-1)[..., ::-1]
 
-            for c in range(Pidx.size):
-                # get the idx of 2km above each point
-                idx2km = find_nearest(PI, Pidx_2km[c])
+    valid_tropopause = trop_layer & (idx2km < first_bad_idx)
+    first_valid_idx = np.argmax(valid_tropopause, axis=-1)
+    has_valid = np.any(valid_tropopause, axis=-1)
 
-                # if the lapse rate from the first point to 2km above
-                # (inclusive) is less than 2, we've found our tropopause
-                if (GI[icol + (slice(idx[c], idx2km + 1),)] <= 2.0).all():
-                    Pt[icol] = Pidx[c]
-                    break
+    Pt = np.full(T.shape[:-1], np.nan, dtype=np.result_type(T.dtype, float))
+    Pt[has_valid] = PI[first_valid_idx[has_valid]]
 
     Pt = Pt ** (1.0 / KAPPA) / 100.0
 
     if COMPUTE_Z:
-        Ht = np.zeros_like(Pt)
-        # need to loop over individual columns again
-        for i in range(Ht.size):
-            icol = np.unravel_index(i, Ht.shape)
-            f = interp1d(P, Z[icol], axis=-1)  # type: ignore
-            Ht[icol] = f(Pt[icol])
+        Ht = _interp_last_axis_monotonic_grid(Pt, P, Z)  # type: ignore
 
         return Pt, Ht
     else:
