@@ -268,6 +268,68 @@ def _maxlat_last_axis_no_nan(F: np.ndarray, lat: np.ndarray, n: int) -> np.ndarr
     return trapezoid(weights * lat, lat, axis=-1) / trapezoid(weights, lat, axis=-1)
 
 
+def _quadratic_peak_fit_last_axis(
+    field: np.ndarray, lat: np.ndarray, n_fit: int = 1
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Return quadratic-fit peak latitude and strength for data on the last axis."""
+
+    field = np.asarray(field)
+    lat = np.asarray(lat, dtype=float)
+    if field.shape[-1] != lat.size:
+        raise ValueError(
+            f"last axis of field with size {field.shape[-1]} is not aligned with lat size {lat.size}"
+        )
+
+    field_flat = field.reshape(-1, lat.size)
+    out_shape = field.shape[:-1]
+    phi = np.zeros(field_flat.shape[0], dtype=np.result_type(field.dtype, float))
+    umax = np.zeros(field_flat.shape[0], dtype=np.result_type(field.dtype, float))
+    imax = np.nanargmax(field_flat, axis=-1)
+
+    boundary = (imax == 0) | (imax == lat.size - 1)
+    phi[boundary] = lat[imax[boundary]]
+
+    interior_rows = np.where(~boundary)[0]
+    if interior_rows.size == 0:
+        return phi.reshape(out_shape), umax.reshape(out_shape)
+
+    if int(n_fit) == 1:
+        interior_imax = imax[interior_rows]
+        for peak_idx in np.unique(interior_imax):
+            rows = interior_rows[interior_imax == peak_idx]
+            coeffs = polynomial.polyfit(
+                lat[peak_idx - 1 : peak_idx + 2],
+                field_flat[rows, peak_idx - 1 : peak_idx + 2].T,
+                deg=2,
+            )
+            phi[rows] = -coeffs[1] / (2.0 * coeffs[2])
+            umax[rows] = (
+                4.0 * coeffs[2] * coeffs[0] - coeffs[1] * coeffs[1]
+            ) / 4.0 / coeffs[2]
+        return phi.reshape(out_shape), umax.reshape(out_shape)
+
+    for row in interior_rows:
+        peak_idx = imax[row]
+        profile = field_flat[row]
+
+        if n_fit > peak_idx or n_fit > profile.size - peak_idx + 1:
+            fit_half_width = min(peak_idx, profile.size - peak_idx + 1)
+        else:
+            fit_half_width = n_fit
+
+        coeffs = polynomial.polyfit(
+            lat[peak_idx - fit_half_width : peak_idx + fit_half_width + 1],
+            profile[peak_idx - fit_half_width : peak_idx + fit_half_width + 1],
+            deg=2,
+        )
+        phi[row] = -coeffs[1] / (2.0 * coeffs[2])
+        umax[row] = (
+            4.0 * coeffs[2] * coeffs[0] - coeffs[1] * coeffs[1]
+        ) / 4.0 / coeffs[2]
+
+    return phi.reshape(out_shape), umax.reshape(out_shape)
+
+
 def _psi_metric_latitude(
     Psi: np.ndarray,
     lat: np.ndarray,
@@ -448,31 +510,8 @@ def TropD_Metric_EDJ(
         return Phi
 
     else:  # method == 'fit':
-        u_flat = u850.reshape(-1, lat.size)
-
         lat_mask = lat[mask]
-        Phi = np.zeros(u850.shape[:-1])
-        Umax = np.zeros(u850.shape[:-1])
-        for i, Uh in enumerate(u_flat[:, mask]):
-            Im = np.nanargmax(Uh)
-            phi_ind = np.unravel_index(i, u850.shape[:-1])
-
-            if Im == 0 or Im == Uh.size - 1:
-                Phi[phi_ind] = lat_mask[Im]
-                continue
-
-            if n_fit > Im or n_fit > Uh.size - Im + 1:
-                N = np.min(Im, Uh.size - Im + 1)
-            else:
-                N = n_fit
-            p = polynomial.polyfit(
-                lat_mask[Im - N : Im + N + 1], Uh[Im - N : Im + N + 1], deg=2
-            )
-            # vertex of quadratic ax**2+bx+c is at -b/2a
-            # p[0] + p[1]*x + p[2]*x**2
-            Phi[phi_ind] = -p[1] / (2.0 * p[2])
-            # value at vertex is (4ac-b**2)/(4a)
-            Umax[phi_ind] = (4.0 * p[2] * p[0] - p[1] * p[1]) / 4.0 / p[2]
+        Phi, Umax = _quadratic_peak_fit_last_axis(u850[..., mask], lat_mask, n_fit=n_fit)
 
         return Phi, Umax  # type: ignore
 
@@ -969,31 +1008,8 @@ def TropD_Metric_STJ(
         return Phi
 
     else:  # method == 'fit':
-        u_flat = u.reshape(-1, lat.size)
-
         lat_mask = lat[mask]
-        Phi = np.zeros(u.shape[:-1])
-        Umax = np.zeros(u.shape[:-1])
-        for i, Uh in enumerate(u_flat[:, mask]):
-            Im = np.nanargmax(Uh)
-            phi_ind = np.unravel_index(i, u.shape[:-1])
-
-            if Im == 0 or Im == Uh.size - 1:
-                Phi[phi_ind] = lat_mask[Im]
-                continue
-
-            if n_fit > Im or n_fit > Uh.size - Im + 1:
-                N = np.min(Im, Uh.size - Im + 1)
-            else:
-                N = n_fit
-            p = polynomial.polyfit(
-                lat_mask[Im - N : Im + N + 1], Uh[Im - N : Im + N + 1], deg=2
-            )
-            # vertex of quadratic ax**2+bx+c is at -b/2a
-            # p[0] + p[1]*x + p[2]*x**2
-            Phi[phi_ind] = -p[1] / (2.0 * p[2])
-            # value at vertex is (4ac-b**2)/(4a)
-            Umax[phi_ind] = (4.0 * p[2] * p[0] - p[1] * p[1]) / 4.0 / p[2]
+        Phi, Umax = _quadratic_peak_fit_last_axis(u[..., mask], lat_mask, n_fit=n_fit)
 
         return Phi, Umax  # type: ignore
 
