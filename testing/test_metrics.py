@@ -3,11 +3,17 @@ import pytest
 from scipy.interpolate import interp1d
 
 from skytropd.functions import (
+    find_nearest,
     TropD_Calculate_MaxLat,
     TropD_Calculate_StreamFunction,
     TropD_Calculate_ZeroCrossing,
 )
-from skytropd.metrics import TropD_Metric_PE, TropD_Metric_PSI
+from skytropd.metrics import (
+    TropD_Metric_EDJ,
+    TropD_Metric_PE,
+    TropD_Metric_PSI,
+    TropD_Metric_STJ,
+)
 
 
 def _build_symmetric_meridional_wind():
@@ -85,6 +91,63 @@ def _reference_metric_pe(pe, lat, lat_uncertainty=0.0):
     )
 
     return np.where(increases, zc1, zc2)
+
+
+def _reference_quadratic_peak_fit(field, lat_mask, n_fit=1):
+    field = np.asarray(field)
+    lat_mask = np.asarray(lat_mask)
+    phi = np.zeros(field.shape[:-1], dtype=float)
+    umax = np.zeros(field.shape[:-1], dtype=float)
+    flat = field.reshape(-1, field.shape[-1])
+
+    for i, profile in enumerate(flat):
+        peak_idx = np.nanargmax(profile)
+        out_idx = np.unravel_index(i, phi.shape)
+
+        if peak_idx == 0 or peak_idx == profile.size - 1:
+            phi[out_idx] = lat_mask[peak_idx]
+            continue
+
+        if n_fit > peak_idx or n_fit > profile.size - peak_idx + 1:
+            fit_half_width = min(peak_idx, profile.size - peak_idx + 1)
+        else:
+            fit_half_width = n_fit
+
+        coeffs = np.polynomial.polynomial.polyfit(
+            lat_mask[peak_idx - fit_half_width : peak_idx + fit_half_width + 1],
+            profile[peak_idx - fit_half_width : peak_idx + fit_half_width + 1],
+            deg=2,
+        )
+        phi[out_idx] = -coeffs[1] / (2.0 * coeffs[2])
+        umax[out_idx] = (
+            4.0 * coeffs[2] * coeffs[0] - coeffs[1] * coeffs[1]
+        ) / 4.0 / coeffs[2]
+
+    return phi, umax
+
+
+def _build_fit_test_wind():
+    lats = np.arange(0.0, 91.0, 2.5)
+    levs = np.array([1000.0, 850.0, 700.0, 500.0, 300.0, 200.0, 100.0])
+    time = np.arange(3)
+    member = np.arange(2)
+    U = np.empty((time.size, member.size, lats.size, levs.size), dtype=float)
+
+    for it, t in enumerate(time):
+        for im, m in enumerate(member):
+            edj_center = 42.0 + 2.0 * m - 1.0 * t
+            stj_center = 28.0 + 1.5 * t + 1.0 * m
+            low_jet = 26.0 * np.exp(-((lats - edj_center) / 7.0) ** 2)
+            upper_jet = 36.0 * np.exp(-((lats - stj_center) / 6.0) ** 2)
+            background = 4.0 + 0.1 * lats
+
+            for k, lev in enumerate(levs):
+                if lev >= 700.0:
+                    U[it, im, :, k] = background + low_jet + 0.2 * upper_jet
+                else:
+                    U[it, im, :, k] = background + upper_jet + 0.15 * low_jet
+
+    return U, lats, levs
 
 
 @pytest.mark.parametrize(
@@ -180,6 +243,43 @@ def test_metric_pe_matches_reference_for_multidimensional_input():
     assert np.any(np.isfinite(expected))
     assert np.any(np.isnan(expected))
     assert np.allclose(actual, expected, equal_nan=True)
+
+
+def test_metric_edj_fit_matches_reference():
+    U, lats, levs = _build_fit_test_wind()
+    mask = (lats > 15.0) & (lats < 70.0)
+    u850 = U[..., find_nearest(levs, 850.0)]
+
+    expected_phi, expected_umax = _reference_quadratic_peak_fit(
+        u850[..., mask], lats[mask], n_fit=1
+    )
+    actual_phi, actual_umax = TropD_Metric_EDJ.__wrapped__(
+        U, lats, levs, method="fit", n_fit=1
+    )
+
+    assert np.allclose(actual_phi, expected_phi, equal_nan=True)
+    assert np.allclose(actual_umax, expected_umax, equal_nan=True)
+
+
+def test_metric_stj_fit_matches_reference():
+    U, lats, levs = _build_fit_test_wind()
+    layer_400_to_100 = (levs >= 100.0) & (levs <= 400.0)
+    lev_int = levs[layer_400_to_100]
+    u_int = np.trapezoid(U[..., layer_400_to_100], lev_int, axis=-1) / (
+        lev_int[-1] - lev_int[0]
+    )
+    adjusted_u = u_int - U[..., find_nearest(levs, 850.0)]
+    mask = (lats > 10.0) & (lats < 60.0)
+
+    expected_phi, expected_umax = _reference_quadratic_peak_fit(
+        adjusted_u[..., mask], lats[mask], n_fit=1
+    )
+    actual_phi, actual_umax = TropD_Metric_STJ.__wrapped__(
+        U, lats, levs, method="fit", n_fit=1
+    )
+
+    assert np.allclose(actual_phi, expected_phi, equal_nan=True)
+    assert np.allclose(actual_umax, expected_umax, equal_nan=True)
 
 
 
