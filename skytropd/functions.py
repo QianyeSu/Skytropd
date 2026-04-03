@@ -69,6 +69,39 @@ def _interp_last_axis_monotonic_grid(
     return np.where(np.isfinite(x), out, np.nan)
 
 
+def _interp_common_grid_1d(x: np.ndarray, xp: np.ndarray, fp: np.ndarray) -> np.ndarray:
+    """Interpolate profiles on the last axis to a shared 1-D target grid."""
+
+    x = np.asarray(x, dtype=float)
+    xp = np.asarray(xp, dtype=float)
+    fp = np.asarray(fp)
+
+    if x.ndim != 1:
+        raise ValueError("x must be one-dimensional")
+    if xp.ndim != 1:
+        raise ValueError("xp must be one-dimensional")
+    if fp.shape[-1] != xp.size:
+        raise ValueError(
+            f"fp last axis of size {fp.shape[-1]} is not aligned with xp size {xp.size}"
+        )
+    if xp.size < 2:
+        raise ValueError("xp must contain at least two points")
+
+    if xp[0] > xp[-1]:
+        xp = xp[::-1]
+        fp = fp[..., ::-1]
+
+    idx = np.searchsorted(xp, x, side="right") - 1
+    idx = np.clip(idx, 0, xp.size - 2)
+
+    x0 = xp[idx]
+    x1 = xp[idx + 1]
+    y0 = np.take(fp, idx, axis=-1)
+    y1 = np.take(fp, idx + 1, axis=-1)
+    frac = (x - x0) / (x1 - x0)
+    return y0 + frac * (y1 - y0)
+
+
 def _nearest_indices_descending_grid(grid_desc: np.ndarray, values: np.ndarray) -> np.ndarray:
     """Return nearest indices on a descending 1-D grid for an array of values."""
 
@@ -80,16 +113,9 @@ def _nearest_indices_descending_grid(grid_desc: np.ndarray, values: np.ndarray) 
     if grid_desc.size == 0:
         raise ValueError("grid_desc must not be empty")
 
-    grid_inc = grid_desc[::-1]
-    right_idx_inc = np.searchsorted(grid_inc, values, side="left")
-    n = grid_desc.size
-
-    upper_idx = np.clip(n - 1 - right_idx_inc, 0, n - 1)
-    lower_idx = np.clip(n - right_idx_inc, 0, n - 1)
-
-    upper_dist = np.abs(grid_desc[upper_idx] - values)
-    lower_dist = np.abs(grid_desc[lower_idx] - values)
-    return np.where(lower_dist < upper_dist, lower_idx, upper_idx)
+    boundary_grid_inc = ((grid_desc[:-1] + grid_desc[1:]) / 2.0)[::-1]
+    right_idx_inc = np.searchsorted(boundary_grid_inc, values, side="left")
+    return np.clip(grid_desc.size - 1 - right_idx_inc, 0, grid_desc.size - 1)
 
 
 def find_nearest(
@@ -422,25 +448,38 @@ def TropD_Calculate_TropopauseHeight(
     )  # K / km
 
     PI = (np.linspace(1000.0, 1.0, 1000) * 100.0) ** KAPPA
-    interpG = interp1d(Pk_mid, Gamma, kind="linear", axis=-1, fill_value="extrapolate")
-    GI = interpG(PI)
-    interpT = interp1d(Pk_mid, T_mid, kind="linear", axis=-1, fill_value="extrapolate")
-    TI = interpT(PI)
-    # points in upper troposphere where lapse rate is less then 2km
-    trop_layer = (
-        (GI <= 2.0) & (PI < (550.0 * 100.0) ** KAPPA) & (PI > (75.0 * 100.0) ** KAPPA)
+    candidate_mask = (PI < (550.0 * 100.0) ** KAPPA) & (PI > (75.0 * 100.0) ** KAPPA)
+    candidate_idx = np.nonzero(candidate_mask)[0]
+    PI_candidate = PI[candidate_mask]
+    TI_candidate = _interp_common_grid_1d(PI_candidate, Pk_mid, T_mid)
+    candidate_top = (
+        PI_candidate
+        - 2000.0 * GRAV / SPEC_HEAT_PRES_DRY / TI_candidate * PI_candidate
     )
-    candidate_top = PI - 2000.0 * GRAV / SPEC_HEAT_PRES_DRY / TI * PI
     idx2km = _nearest_indices_descending_grid(PI, candidate_top)
-    first_bad_idx = np.where(GI > 2.0, np.arange(PI.size), PI.size)
+
+    gi_start = min(candidate_idx[0], int(np.min(idx2km)))
+    gi_stop = max(candidate_idx[-1], int(np.max(idx2km)))
+    GI_slice = slice(gi_start, gi_stop + 1)
+    PI_window = PI[GI_slice]
+    GI = _interp_common_grid_1d(PI_window, Pk_mid, Gamma)
+    candidate_idx_window = candidate_idx - gi_start
+    idx2km_window = idx2km - gi_start
+
+    # points in upper troposphere where lapse rate is less than 2K/km
+    trop_layer = GI[..., candidate_idx_window] <= 2.0
+
+    first_bad_idx = np.where(GI > 2.0, np.arange(PI_window.size), PI_window.size)
     first_bad_idx = np.minimum.accumulate(first_bad_idx[..., ::-1], axis=-1)[..., ::-1]
 
-    valid_tropopause = trop_layer & (idx2km < first_bad_idx)
+    valid_tropopause = trop_layer & (
+        idx2km_window < first_bad_idx[..., candidate_idx_window]
+    )
     first_valid_idx = np.argmax(valid_tropopause, axis=-1)
     has_valid = np.any(valid_tropopause, axis=-1)
 
     Pt = np.full(T.shape[:-1], np.nan, dtype=np.result_type(T.dtype, float))
-    Pt[has_valid] = PI[first_valid_idx[has_valid]]
+    Pt[has_valid] = PI_window[candidate_idx_window[first_valid_idx[has_valid]]]
 
     Pt = Pt ** (1.0 / KAPPA) / 100.0
 
