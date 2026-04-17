@@ -74,6 +74,7 @@ jobs:
         shell: bash
         run: |
           docker run --rm \
+            -e MANYLINUX_IMAGE="${{ matrix.manylinux-image }}" \
             -e PYBIN="${PYBIN}" \
             -v "${PWD}:/project" \
             -w /project \
@@ -82,7 +83,7 @@ jobs:
               set -euxo pipefail
               test -x "${PYBIN}/python"
               "${PYBIN}/python" -m pip install --upgrade pip
-              "${PYBIN}/python" -m pip install build xarray
+              "${PYBIN}/python" -m pip install build
               rm -rf dist build
               "${PYBIN}/python" -m build --wheel
             '
@@ -121,6 +122,7 @@ jobs:
         shell: bash
         run: |
           docker run --rm \
+            -e MANYLINUX_IMAGE="${{ matrix.manylinux-image }}" \
             -e PYBIN="${PYBIN}" \
             -v "${PWD}:/project" \
             -w /project \
@@ -129,7 +131,11 @@ jobs:
               set -euxo pipefail
               test -x "${PYBIN}/python"
               "${PYBIN}/python" -m pip install --upgrade pip
-              "${PYBIN}/python" -m pip install --only-binary=:all: numpy scipy pandas xarray
+              if [ "${MANYLINUX_IMAGE}" = "manylinux2014" ]; then
+                "${PYBIN}/python" -m pip install --only-binary=:all: numpy scipy "pandas<2.3" xarray
+              else
+                "${PYBIN}/python" -m pip install --only-binary=:all: numpy scipy pandas xarray
+              fi
               "${PYBIN}/python" -m pip install --force-reinstall --no-deps dist/*.whl
               cd /tmp
               "${PYBIN}/python" /project/testing/smoke_runtime_wheel.py
