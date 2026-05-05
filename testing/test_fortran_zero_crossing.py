@@ -1,10 +1,6 @@
 import numpy as np
-import pytest
 
-from skytropd._fortran_zero_crossing import (
-    fortran_zero_crossing,
-    fortran_zero_crossing_status,
-)
+from skytropd._fortran_zero_crossing import fortran_zero_crossing
 from skytropd.functions import TropD_Calculate_ZeroCrossing, _zero_crossing_python
 
 
@@ -23,10 +19,6 @@ def _build_test_field():
     return profiles, x
 
 
-@pytest.mark.skipif(
-    not fortran_zero_crossing_status()[0],
-    reason=fortran_zero_crossing_status()[1] or "Fortran backend unavailable",
-)
 def test_fortran_backend_matches_python_core():
     field, lat = _build_test_field()
 
@@ -37,10 +29,6 @@ def test_fortran_backend_matches_python_core():
     assert np.allclose(actual, expected, equal_nan=True)
 
 
-@pytest.mark.skipif(
-    not fortran_zero_crossing_status()[0],
-    reason=fortran_zero_crossing_status()[1] or "Fortran backend unavailable",
-)
 def test_public_zero_crossing_matches_python_core_with_fortran_backend():
     field, lat = _build_test_field()
 
