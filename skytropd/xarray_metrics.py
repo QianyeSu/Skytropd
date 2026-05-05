@@ -524,7 +524,7 @@ class MetricAccessor:
 
         Parameters
         ----------
-        method : {"Psi_500", "Psi_500_10Perc", "Psi_<p1>_<p2>", "Psi_500_Int", "Psi_Int"},
+        method : {"Psi_500", "Psi_500_10Perc", "Psi_<p1>_<p2>", "Psi_<p1>_<p2>_<x>Perc", "Psi_<p1>_<p2>_<x>Perc_center2d", "Psi_<p1>_<p2>_<x>Perc_profile", "Psi_500_Int", "Psi_Int"},
         optional
             Method of determining which Psi zero crossing to return, by default "Psi_500":
 
@@ -533,6 +533,16 @@ class MetricAccessor:
                                 hemisphere at the 500hPa level
             * "Psi_<p1>_<p2>": Zero crossing of Psi vertically averaged between the
                                ``p1`` and ``p2`` hPa levels, e.g. ``"Psi_300_700"``
+            * "Psi_<p1>_<p2>_<x>Perc": Latitude where the layer-mean
+                                       streamfunction between ``p1`` and ``p2``
+                                       hPa decreases to ``x`` % of the
+                                       Hadley-cell-center value from the full
+                                       ``(lat, lev)`` field. Omitting the suffix
+                                       defaults to ``center2d``.
+            * "Psi_<p1>_<p2>_<x>Perc_center2d": Explicit form of the default
+                                                threshold based on the 2-D center
+            * "Psi_<p1>_<p2>_<x>Perc_profile": Threshold based on the layer-mean
+                                               profile value at the center latitude
             * "Psi_500_Int": Zero crossing of the vertically-integrated Psi at 500 hPa
             * "Psi_Int" : Zero crossing of the column-averaged Psi
 
