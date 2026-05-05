@@ -1,25 +1,15 @@
 from __future__ import annotations
 
-from typing import Optional, Tuple
-
 import numpy as np
 
-try:
-    from . import _zero_crossing_backend as _backend
-
-    _IMPORT_ERROR = None
-except ImportError as exc:  # pragma: no cover - depends on local build environment
-    _backend = None
-    _IMPORT_ERROR = str(exc)
+from . import _zero_crossing_backend as _backend
 
 
 def fortran_zero_crossing(
     F_flat: np.ndarray, lat: np.ndarray, lat_uncertainty: float
-) -> Optional[np.ndarray]:
-    """Return zero crossings from the compiled backend when available."""
+) -> np.ndarray:
+    """Return zero crossings from the compiled backend."""
 
-    if _backend is None:
-        return None
     return _backend.zero_crossing(
         np.ascontiguousarray(F_flat, dtype=np.float64),
         np.ascontiguousarray(lat, dtype=np.float64),
@@ -27,7 +17,17 @@ def fortran_zero_crossing(
     )
 
 
-def fortran_zero_crossing_status() -> Tuple[bool, Optional[str]]:
-    """Report whether the compiled backend can be imported."""
+def fortran_descending_threshold_crossing(
+    profile_flat: np.ndarray,
+    lat: np.ndarray,
+    start_idx: np.ndarray,
+    threshold: np.ndarray,
+) -> np.ndarray:
+    """Return descending threshold crossings from the compiled backend."""
 
-    return _backend is not None, _IMPORT_ERROR
+    return _backend.descending_threshold_crossing(
+        np.ascontiguousarray(profile_flat, dtype=np.float64),
+        np.ascontiguousarray(lat, dtype=np.float64),
+        np.ascontiguousarray(start_idx, dtype=np.int32),
+        np.ascontiguousarray(threshold, dtype=np.float64),
+    )
