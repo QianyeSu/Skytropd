@@ -341,8 +341,10 @@ def TropD_Calculate_StreamFunction(
 
     Parameters
     ----------
-    V : numpy.ndarray (dim1, ..., dimN-2, lat, lev)
-        N-dimensional array of zonal-mean meridional wind with final 2 axes corresponding to latitude and vertical level, respectively
+    V : numpy.ndarray (dim1, ..., dimN-2, lat, lev) or (dim1, ..., dimN-2, lev, lat)
+        N-dimensional array of zonal-mean meridional wind with final 2 axes
+        corresponding to latitude and vertical level, respectively, or the swapped
+        trailing order ``(..., lev, lat)``
     lat : numpy.ndarray
         equally-spaced latitude array
     lev : numpy.ndarray
@@ -354,10 +356,20 @@ def TropD_Calculate_StreamFunction(
         the meridional mass overturning streamfunction (psi)
     """
 
-    if V.shape[-2:] != (lat.size, lev.size):
+    V = np.asarray(V)
+    lat = np.asarray(lat)
+    lev = np.asarray(lev)
+    transposed_trailing_axes = False
+    if V.shape[-2:] == (lat.size, lev.size):
+        pass
+    elif V.shape[-2:] == (lev.size, lat.size):
+        V = np.swapaxes(V, -2, -1)
+        transposed_trailing_axes = True
+    else:
         raise ValueError(
-            f"final dimensions on V {V.shape[-2:]} and grid"
-            f" coordinates don't match ({lat.size},{lev.size})"
+            f"final dimensions on V {V.shape[-2:]} and grid coordinates must match "
+            f"either (lat, lev)=({lat.size},{lev.size}) or "
+            f"(lev, lat)=({lev.size},{lat.size})"
         )
 
     # mask any subsurface or missing data
@@ -369,6 +381,9 @@ def TropD_Calculate_StreamFunction(
         * (EARTH_RADIUS / GRAV * 2.0 * np.pi)
         * cos_lat
     )
+
+    if transposed_trailing_axes:
+        psi = np.swapaxes(psi, -2, -1)
 
     return psi
 
@@ -494,7 +509,7 @@ def TropD_Calculate_TropopauseHeight(
 def _zero_crossing_python(
     F_last_axis: np.ndarray, lat: np.ndarray, lat_uncertainty: float
 ) -> np.ndarray:
-    """Pure Python implementation used when the Fortran backend is unavailable."""
+    """Reference Python implementation for validating the compiled backend."""
 
     # Find all sign changes
     D = np.diff(np.sign(F_last_axis), axis=-1)
@@ -541,10 +556,7 @@ def TropD_Calculate_ZeroCrossing(
     """
     Find the first (with increasing index) zero crossing of the function F.
 
-    When the optional compiled backend is present, this function uses the optimized
-    Fortran implementation for the per-latitude-band search. If the extension was not
-    built or cannot be imported, it falls back to the original pure Python
-    implementation.
+    This function uses the compiled backend for the per-latitude-band search.
 
     Parameters
     ----------
@@ -588,7 +600,4 @@ def TropD_Calculate_ZeroCrossing(
     F_flat = F.reshape(-1, lat.size)
 
     ZC_fortran = fortran_zero_crossing(F_flat, lat, lat_uncertainty)
-    if ZC_fortran is not None:
-        return ZC_fortran.reshape(F_shape)
-
-    return _zero_crossing_python(F, lat, lat_uncertainty)
+    return ZC_fortran.reshape(F_shape)
