@@ -74,4 +74,41 @@ contains
       end if
     end do
   end subroutine zc_fortran
+
+  subroutine descending_threshold_fortran(profile, nbands, nlat, lat, start_idx, threshold, out) bind(C, name="descending_threshold_fortran")
+    integer(c_int), value :: nbands, nlat
+    real(c_double), intent(in) :: profile(*)
+    real(c_double), intent(in) :: lat(*)
+    integer(c_int), intent(in) :: start_idx(*)
+    real(c_double), intent(in) :: threshold(*)
+    real(c_double), intent(out) :: out(*)
+
+    integer :: i, j, base, start1
+    real(c_double) :: val0, val1, nan_value
+
+    nan_value = ieee_value(0.0d0, ieee_quiet_nan)
+
+    do i = 0, nbands - 1
+      out(i + 1) = nan_value
+      base = i * nlat
+      start1 = start_idx(i + 1) + 1
+
+      if (start1 < 1 .or. start1 >= nlat) cycle
+
+      do j = start1, nlat - 1
+        val0 = profile(base + j)
+        val1 = profile(base + j + 1)
+        if (ieee_is_nan(val0) .or. ieee_is_nan(val1)) cycle
+
+        if (val0 >= threshold(i + 1) .and. val1 <= threshold(i + 1)) then
+          if (abs(val0 - val1) <= epsilon(val0)) then
+            out(i + 1) = 0.5d0 * (lat(j) + lat(j + 1))
+          else
+            out(i + 1) = lat(j) + (threshold(i + 1) - val0) * (lat(j + 1) - lat(j)) / (val1 - val0)
+          end if
+          exit
+        end if
+      end do
+    end do
+  end subroutine descending_threshold_fortran
 end module zero_crossing_mod
