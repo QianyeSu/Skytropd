@@ -6,6 +6,7 @@ import pytest
 from scipy.interpolate import interp1d
 import xarray as xr
 
+import skytropd.metrics as metrics_mod
 from skytropd.functions import (
     KAPPA,
     find_nearest,
@@ -21,10 +22,7 @@ from skytropd.metrics import (
     TropD_Metric_STJ,
     TropD_Metric_TPB,
 )
-from skytropd._fortran_zero_crossing import fortran_zero_crossing_status
 
-
-_HAS_FORTRAN_BACKEND, _FORTRAN_IMPORT_ERROR = fortran_zero_crossing_status()
 _LAYER_PERCENT_METHOD = re.compile(
     r"^Psi_\d+(?:\.\d+)?_\d+(?:\.\d+)?_\d+(?:\.\d+)?Perc(?:_(?:center2d|profile))?$",
     flags=re.IGNORECASE,
@@ -345,8 +343,6 @@ def _reference_psi_layer_percent_center2d(
     ],
 )
 def test_precomputed_psi_matches_v_metric(method):
-    if _LAYER_PERCENT_METHOD.fullmatch(method) and not _HAS_FORTRAN_BACKEND:
-        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
     V, lats, levs = _build_symmetric_meridional_wind()
     Psi = TropD_Calculate_StreamFunction(V, lats, levs)
 
@@ -424,8 +420,6 @@ def test_psi_300_700_alias_preserves_existing_behavior():
 
 
 def test_psi_5perc_default_matches_center2d_variant():
-    if not _HAS_FORTRAN_BACKEND:
-        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
     V, lats, levs = _build_symmetric_meridional_wind()
     Psi = TropD_Calculate_StreamFunction(V, lats, levs)
 
@@ -442,8 +436,6 @@ def test_psi_5perc_default_matches_center2d_variant():
 
 
 def test_psi_5perc_center2d_matches_reference_script_logic():
-    if not _HAS_FORTRAN_BACKEND:
-        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
     V, lats, levs = _build_symmetric_meridional_wind()
     Psi = TropD_Calculate_StreamFunction(V, lats, levs)
 
@@ -459,8 +451,6 @@ def test_psi_5perc_center2d_matches_reference_script_logic():
 
 
 def test_psi_10perc_default_matches_center2d_variant():
-    if not _HAS_FORTRAN_BACKEND:
-        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
     V, lats, levs = _build_symmetric_meridional_wind()
     Psi = TropD_Calculate_StreamFunction(V, lats, levs)
 
@@ -477,8 +467,6 @@ def test_psi_10perc_default_matches_center2d_variant():
 
 
 def test_psi_10perc_center2d_matches_generalized_reference_script_logic():
-    if not _HAS_FORTRAN_BACKEND:
-        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
     V, lats, levs = _build_symmetric_meridional_wind()
     Psi = TropD_Calculate_StreamFunction(V, lats, levs)
 
@@ -494,12 +482,8 @@ def test_psi_10perc_center2d_matches_generalized_reference_script_logic():
 
 
 def test_psi_5perc_uses_compiled_descending_threshold_backend_when_available(monkeypatch):
-    if not _HAS_FORTRAN_BACKEND:
-        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
     V, lats, levs = _build_symmetric_meridional_wind()
     Psi = TropD_Calculate_StreamFunction(V, lats, levs)
-
-    import skytropd.metrics as metrics_mod
 
     calls = {"count": 0}
     original = metrics_mod.fortran_descending_threshold_crossing
@@ -529,8 +513,6 @@ def test_streamfunction_accepts_trailing_lev_lat_order():
 
 
 def test_psi_layer_percent_accepts_trailing_lev_lat_order_with_leading_dims():
-    if not _HAS_FORTRAN_BACKEND:
-        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
     V, lats, levs = _build_symmetric_meridional_wind()
     V = np.stack([V, 1.05 * V, 0.95 * V], axis=0)
     V = np.stack([V, 1.1 * V], axis=0)
@@ -557,8 +539,6 @@ def test_psi_layer_percent_accepts_trailing_lev_lat_order_with_leading_dims():
 
 
 def test_psi_5perc_profile_variant_is_distinct_method():
-    if not _HAS_FORTRAN_BACKEND:
-        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
     V, lats, levs = _build_symmetric_meridional_wind()
     Psi = TropD_Calculate_StreamFunction(V, lats, levs)
 

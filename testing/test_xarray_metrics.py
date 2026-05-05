@@ -7,10 +7,7 @@ import pytest
 xr = pytest.importorskip("xarray")
 
 import skytropd as pyt
-from skytropd._fortran_zero_crossing import fortran_zero_crossing_status
 
-
-_HAS_FORTRAN_BACKEND, _FORTRAN_IMPORT_ERROR = fortran_zero_crossing_status()
 _LAYER_PERCENT_METHOD = re.compile(
     r"^Psi_\d+(?:\.\d+)?_\d+(?:\.\d+)?_\d+(?:\.\d+)?Perc(?:_(?:center2d|profile))?$",
     flags=re.IGNORECASE,
@@ -46,8 +43,6 @@ def _build_symmetric_meridional_wind():
     ],
 )
 def test_xr_psi_precomputed_matches_wind_input(method):
-    if _LAYER_PERCENT_METHOD.fullmatch(method) and not _HAS_FORTRAN_BACKEND:
-        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
     V, lats, levs = _build_symmetric_meridional_wind()
     V = np.stack([V, 1.1 * V], axis=0)
     times = np.arange(V.shape[0])
@@ -69,8 +64,6 @@ def test_xr_psi_precomputed_matches_wind_input(method):
 
 
 def test_xr_psi_accepts_lev_lat_dimension_order():
-    if not _HAS_FORTRAN_BACKEND:
-        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
     V, lats, levs = _build_symmetric_meridional_wind()
     V = np.stack([V, 1.1 * V], axis=0)
     V_lev_lat = np.swapaxes(V, -2, -1)
