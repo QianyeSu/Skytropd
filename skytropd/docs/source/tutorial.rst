@@ -69,4 +69,8 @@ instead of ``NaN``. Set ``threshold=None`` to disable this fallback.
 The historical method name ``"Psi_500_10Perc"`` remains available and uses the
 same threshold-crossing calculation directly.
 
+Layer-threshold methods such as ``"Psi_500_800_5Perc"`` and
+``"Psi_500_800_10Perc_profile"`` are also available for precomputed PSI fields
+or meridional wind input.
+
 More detailed code examples can be found in the file ``TropD_Example_Calculations.py``.

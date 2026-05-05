@@ -13,7 +13,7 @@ SkyTropD is a community-maintained package for calculating metrics of tropical w
 
 __ https://www.geosci-model-dev-discuss.net/gmd-2018-124/
 
-This documentation describes version 2.13.0.
+This documentation describes version 2.14.0.
 
 
 Download and Install
@@ -39,7 +39,7 @@ SkyTropD is maintained by Qianye Su.
 
 The original Python implementation was translated by Alison Ming with help from Paul William Staten and the TropD team.
 
-Last updated: 21 March 2026  
+Last updated: 6 May 2026  
 
 .. toctree::
     :hidden:
