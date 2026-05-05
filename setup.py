@@ -11,24 +11,16 @@ from setuptools.command.build_ext import build_ext
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 PACKAGE_DIR = PROJECT_ROOT / "skytropd"
-FORTRAN_SKIP_ENV = "SKYTROPD_SKIP_FORTRAN"
 
 
 class MesonBuildExt(build_ext):
-    """Build the optional zero-crossing backend with Meson."""
+    """Build the zero-crossing backend with Meson."""
 
     def run(self):
         for ext in self.extensions:
             self.build_extension(ext)
 
     def build_extension(self, ext):
-        if os.environ.get(FORTRAN_SKIP_ENV, "").lower() in {"1", "true", "yes"}:
-            self.announce(
-                f"Skipping Fortran backend build because {FORTRAN_SKIP_ENV} is set",
-                level=2,
-            )
-            return
-
         env = self._build_environment()
         self._require_tool("ninja", env)
         c_compiler = self._require_compiler(
@@ -146,8 +138,7 @@ class MesonBuildExt(build_ext):
     def _require_tool(self, tool_name, env):
         if shutil.which(tool_name, path=env["PATH"]) is None:
             raise RuntimeError(
-                f"required build tool '{tool_name}' was not found in PATH. "
-                f"Install it or set {FORTRAN_SKIP_ENV}=1 to skip the backend."
+                f"required build tool '{tool_name}' was not found in PATH. Install it."
             )
 
     def _require_compiler(self, env, env_vars, candidates, label):
@@ -157,8 +148,7 @@ class MesonBuildExt(build_ext):
             searched = ", ".join(candidates)
             raise RuntimeError(
                 f"required {label} was not found in PATH or via {configured}. "
-                f"Searched for {searched}. Install it or set {FORTRAN_SKIP_ENV}=1 "
-                "to skip the backend."
+                f"Searched for {searched}. Install it."
             )
         return resolved
 
