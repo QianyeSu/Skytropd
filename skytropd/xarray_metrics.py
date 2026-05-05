@@ -524,15 +524,15 @@ class MetricAccessor:
 
         Parameters
         ----------
-        method : {"Psi_500", "Psi_500_10Perc", "Psi_300_700", "Psi_500_Int", "Psi_Int"},
+        method : {"Psi_500", "Psi_500_10Perc", "Psi_<p1>_<p2>", "Psi_500_Int", "Psi_Int"},
         optional
             Method of determining which Psi zero crossing to return, by default "Psi_500":
 
             * "Psi_500": Zero crossing of the streamfunction (Psi) at 500hPa
             * "Psi_500_10Perc": Crossing of 10% of the extremum value of Psi in each
                                 hemisphere at the 500hPa level
-            * "Psi_300_700": Zero crossing of Psi vertically averaged between the 300hPa
-                             and 700 hPa levels
+            * "Psi_<p1>_<p2>": Zero crossing of Psi vertically averaged between the
+                               ``p1`` and ``p2`` hPa levels, e.g. ``"Psi_300_700"``
             * "Psi_500_Int": Zero crossing of the vertically-integrated Psi at 500 hPa
             * "Psi_Int" : Zero crossing of the column-averaged Psi
 
