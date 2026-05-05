@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 import numpy as np
 import pytest
@@ -6,6 +7,14 @@ import pytest
 xr = pytest.importorskip("xarray")
 
 import skytropd as pyt
+from skytropd._fortran_zero_crossing import fortran_zero_crossing_status
+
+
+_HAS_FORTRAN_BACKEND, _FORTRAN_IMPORT_ERROR = fortran_zero_crossing_status()
+_LAYER_PERCENT_METHOD = re.compile(
+    r"^Psi_\d+(?:\.\d+)?_\d+(?:\.\d+)?_\d+(?:\.\d+)?Perc(?:_(?:center2d|profile))?$",
+    flags=re.IGNORECASE,
+)
 
 
 def _build_symmetric_meridional_wind():
@@ -21,9 +30,24 @@ def _build_symmetric_meridional_wind():
 
 @pytest.mark.parametrize(
     "method",
-    ["Psi_500", "Psi_500_10Perc", "Psi_300_700", "Psi_500_Int", "Psi_Int"],
+    [
+        "Psi_500",
+        "Psi_500_10Perc",
+        "Psi_300_700",
+        "Psi_500_800",
+        "Psi_500_800_5Perc",
+        "Psi_500_800_5Perc_center2d",
+        "Psi_500_800_5Perc_profile",
+        "Psi_500_800_10Perc",
+        "Psi_500_800_10Perc_center2d",
+        "Psi_500_800_10Perc_profile",
+        "Psi_500_Int",
+        "Psi_Int",
+    ],
 )
 def test_xr_psi_precomputed_matches_wind_input(method):
+    if _LAYER_PERCENT_METHOD.fullmatch(method) and not _HAS_FORTRAN_BACKEND:
+        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
     V, lats, levs = _build_symmetric_meridional_wind()
     V = np.stack([V, 1.1 * V], axis=0)
     times = np.arange(V.shape[0])
@@ -42,6 +66,36 @@ def test_xr_psi_precomputed_matches_wind_input(method):
 
     assert np.allclose(phi_from_v.values, phi_from_psi.values, equal_nan=True)
     assert list(phi_from_psi.coords["hemsph"].values) == ["SH", "NH"]
+
+
+def test_xr_psi_accepts_lev_lat_dimension_order():
+    if not _HAS_FORTRAN_BACKEND:
+        pytest.skip(f"Fortran backend unavailable: {_FORTRAN_IMPORT_ERROR}")
+    V, lats, levs = _build_symmetric_meridional_wind()
+    V = np.stack([V, 1.1 * V], axis=0)
+    V_lev_lat = np.swapaxes(V, -2, -1)
+    ds_v = xr.Dataset(
+        {"v": (("time", "lev", "lat"), V_lev_lat)},
+        coords={"time": np.arange(V.shape[0]), "lat": lats, "lev": levs},
+    )
+
+    psi = pyt.TropD_Calculate_StreamFunction(V_lev_lat, lats, levs)
+    ds_psi = xr.Dataset(
+        {"psi": (("time", "lev", "lat"), psi)},
+        coords={"time": np.arange(V.shape[0]), "lat": lats, "lev": levs},
+    )
+
+    expected = xr.Dataset(
+        {"v": (("time", "lat", "lev"), V)},
+        coords={"time": np.arange(V.shape[0]), "lat": lats, "lev": levs},
+    ).pyt_metrics.xr_psi(method="Psi_500_800_10Perc")
+    actual_from_v = ds_v.pyt_metrics.xr_psi(method="Psi_500_800_10Perc")
+    actual_from_psi = ds_psi.pyt_metrics.xr_psi(
+        method="Psi_500_800_10Perc", field_type="PSI"
+    )
+
+    assert np.allclose(actual_from_v.values, expected.values, equal_nan=True)
+    assert np.allclose(actual_from_psi.values, expected.values, equal_nan=True)
 
 
 def test_xr_edj_uses_pressure_axis_when_present():
