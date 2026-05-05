@@ -5,6 +5,7 @@ from typing import Optional, Tuple, Callable, Union
 import warnings
 from functools import wraps
 from inspect import signature
+import re
 import numpy as np
 from numpy.polynomial import polynomial
 try:
@@ -20,6 +21,7 @@ from .functions import (
     TropD_Calculate_TropopauseHeight,
     TropD_Calculate_ZeroCrossing,
 )
+from ._fortran_zero_crossing import fortran_descending_threshold_crossing
 
 # kappa = R_dry / Cp_dry
 KAPPA = 287.04 / 1005.7
@@ -106,8 +108,8 @@ def hemisphere_handler(
         metric_code = _metric_code_from_name(metric_func.__name__)
         # we need to know which dimension is the latitude dimension to split it
         # appropriately. In functions which accept vertically-resolved input data,
-        # the vertical level is last and latitude is second to last. Otherwise, latitude
-        # is last
+        # the vertical level is usually last and latitude is second to last.
+        # TropD_Metric_PSI also accepts the trailing order (..., lev, lat).
         has_extra_dim = False
         # these all require vertically-resolved data
         if metric_code in ["STJ", "TPB", "PSI"]:
@@ -123,6 +125,13 @@ def hemisphere_handler(
                 "zonal_mean_tracer",
                 signature(metric_func).parameters["zonal_mean_tracer"].default,
             )
+        lat_axis = -2 if has_extra_dim else -1
+        if metric_code == "PSI":
+            lev = args[0] if len(args) > 0 else kwargs.get("lev", None)
+            if lev is not None:
+                lev = np.asarray(lev)
+                if arr.shape[-2:] == (lev.size, lat.size):
+                    lat_axis = -1
         # now the TropD_Metric_TPB accepts a Z array kwarg that also needs to be split
         # based on latitude, so we need to get that if it is there
         Z = None
@@ -133,9 +142,8 @@ def hemisphere_handler(
         if (lat < -20.0).any():
             # let's make sure we include the equator point just in case
             SHmask = lat < 0.5
-            SHarr_mask = [Ellipsis, SHmask]
-            if has_extra_dim:
-                SHarr_mask.append(slice(None))
+            SHarr_mask = [slice(None)] * arr.ndim
+            SHarr_mask[lat_axis] = SHmask
             if Z is not None:
                 kwargs["Z"] = Z[tuple(SHarr_mask)]
             Phi_list.append(
@@ -157,9 +165,8 @@ def hemisphere_handler(
                 Phi_list[0] *= -1.0
         if (lat > 20.0).any():
             NHmask = lat > -0.5
-            NHarr_mask = [Ellipsis, NHmask]
-            if has_extra_dim:
-                NHarr_mask.append(slice(None))
+            NHarr_mask = [slice(None)] * arr.ndim
+            NHarr_mask[lat_axis] = NHmask
             if Z is not None:
                 kwargs["Z"] = Z[tuple(NHarr_mask)]
             Phi_list.append(
@@ -180,6 +187,26 @@ def hemisphere_handler(
         return tuple(Phi_list)  # type: ignore
 
     return wrapped_metric_func
+
+
+def _coerce_trailing_lat_lev_axes(
+    field: np.ndarray, lat: np.ndarray, lev: np.ndarray, field_name: str
+) -> np.ndarray:
+    """Return ``field`` with trailing axes ordered as ``(..., lat, lev)``."""
+
+    field = np.asarray(field)
+    lat = np.asarray(lat)
+    lev = np.asarray(lev)
+
+    if field.shape[-2:] == (lat.size, lev.size):
+        return field
+    if field.shape[-2:] == (lev.size, lat.size):
+        return np.swapaxes(field, -2, -1)
+    raise ValueError(
+        f"final dimensions on {field_name} {field.shape[-2:]} and grid coordinates "
+        f"must match either (lat, lev)=({lat.size},{lev.size}) or "
+        f"(lev, lat)=({lev.size},{lat.size})"
+    )
 
 
 def _interp_last_axis_common_grid(
@@ -340,18 +367,13 @@ def _psi_metric_latitude(
 ) -> np.ndarray:
     """Return HC edge latitude from a precomputed mass streamfunction."""
 
-    Psi = np.asarray(Psi)
+    Psi = _coerce_trailing_lat_lev_axes(Psi, lat, lev, "Psi")
     lat = np.asarray(lat)
     lev = np.asarray(lev)
     if threshold is not None:
         threshold = float(threshold)
         if threshold < 0.0:
             raise ValueError("threshold must be non-negative or None")
-    if Psi.shape[-2:] != (lat.size, lev.size):
-        raise ValueError(
-            f"final dimensions on Psi {Psi.shape[-2:]} and grid "
-            f"coordinates don't match ({lat.size},{lev.size})"
-        )
 
     # make latitude vector monotonically increasing
     if lat[-1] < lat[0]:
@@ -360,7 +382,16 @@ def _psi_metric_latitude(
     cos_lat = np.cos(lat * np.pi / 180.0)[:, None]
 
     psi_method = method.strip()
-    psi_method_lower = psi_method.lower()
+    layer_match = re.fullmatch(
+        r"Psi_(\d+(?:\.\d+)?)_(\d+(?:\.\d+)?)",
+        psi_method,
+        flags=re.IGNORECASE,
+    )
+    layer_percent_match = re.fullmatch(
+        r"Psi_(\d+(?:\.\d+)?)_(\d+(?:\.\d+)?)_(\d+(?:\.\d+)?)Perc(?:_(center2d|profile))?",
+        psi_method,
+        flags=re.IGNORECASE,
+    )
 
     if (psi_method == "Psi_500") or (psi_method == "Psi_500_10Perc"):
         # Use Psi at the level nearest to 500 hPa
@@ -372,14 +403,9 @@ def _psi_metric_latitude(
     elif psi_method == "Psi_Int":
         # Use vertical mean of Psi
         P = trapezoid(Psi * cos_lat, 100.0 * lev, axis=-1)
-    elif psi_method_lower.startswith("psi_") and psi_method_lower.count("_") == 2:
-        _, lower_str, upper_str = psi_method_lower.split("_")
-        try:
-            lower = float(lower_str)
-            upper = float(upper_str)
-        except ValueError as exc:
-            raise ValueError("unrecognized method " + method) from exc
-
+    elif layer_match is not None:
+        lower = float(layer_match.group(1))
+        upper = float(layer_match.group(2))
         lower_bound = min(lower, upper)
         upper_bound = max(lower, upper)
         # Use Psi averaged between the requested pressure levels
@@ -392,6 +418,60 @@ def _psi_metric_latitude(
         P = trapezoid(
             Psi[..., layer_mask] * cos_lat, lev[layer_mask] * 100.0, axis=-1
         )
+    elif layer_percent_match is not None:
+        lower = float(layer_percent_match.group(1))
+        upper = float(layer_percent_match.group(2))
+        threshold_fraction = float(layer_percent_match.group(3)) / 100.0
+        threshold_mode = (layer_percent_match.group(4) or "center2d").lower()
+        lower_bound = min(lower, upper)
+        upper_bound = max(lower, upper)
+        layer_mask = (lev >= lower_bound) & (lev <= upper_bound)
+        if not np.any(layer_mask):
+            raise ValueError(
+                "no pressure levels found within the requested PSI layer "
+                f"{lower:g}-{upper:g} hPa"
+            )
+
+        profile = Psi[..., layer_mask].mean(axis=-1)
+        nh_mask = lat > 0.0
+        if not np.any(nh_mask):
+            raise ValueError(
+                "requires at least one positive latitude for PSI layer Perc methods"
+            )
+
+        out_shape = Psi.shape[:-2]
+        phi = np.full(out_shape, np.nan, dtype=np.result_type(Psi.dtype, float))
+        psi_flat = Psi.reshape(-1, lat.size, lev.size)
+        profile_flat = profile.reshape(-1, lat.size)
+        phi_flat = phi.reshape(-1)
+        nh_lat_indices = np.where(nh_mask)[0]
+        start_idx = np.full(psi_flat.shape[0], -1, dtype=np.int32)
+        threshold_values = np.full(psi_flat.shape[0], np.nan, dtype=float)
+
+        for i in range(psi_flat.shape[0]):
+            nh_field = psi_flat[i, nh_mask, :]
+            if not np.isfinite(nh_field).any():
+                continue
+            center_flat_index = int(np.nanargmax(nh_field))
+            center_lat_subindex, center_level_index = np.unravel_index(
+                center_flat_index, nh_field.shape
+            )
+            center_lat_index = nh_lat_indices[center_lat_subindex]
+            center_value_2d = float(nh_field[center_lat_subindex, center_level_index])
+            center_value_profile = float(profile_flat[i, center_lat_index])
+
+            if threshold_mode == "center2d":
+                threshold_values[i] = threshold_fraction * center_value_2d
+            elif threshold_mode == "profile":
+                threshold_values[i] = threshold_fraction * center_value_profile
+            else:
+                raise ValueError("unrecognized method " + method)
+            start_idx[i] = center_lat_index
+
+        phi_flat[:] = fortran_descending_threshold_crossing(
+            profile_flat, lat, start_idx, threshold_values
+        )
+        return phi
     else:
         raise ValueError("unrecognized method " + method)
 
@@ -775,14 +855,15 @@ def TropD_Metric_PSI(
 
     Parameters
     ----------
-    V : numpy.ndarray (dim1, ..., lat, lev)
+    V : numpy.ndarray (dim1, ..., lat, lev) or (dim1, ..., lev, lat)
         N-dimensional zonal-mean meridional wind when ``field_type="V"`` or a
-        precomputed mass streamfunction when ``field_type="PSI"``
+        precomputed mass streamfunction when ``field_type="PSI"``. The final two
+        axes may be ordered either as ``(..., lat, lev)`` or ``(..., lev, lat)``.
     lat : numpy.ndarray (lat,)
         latitude array
     lev : numpy.ndarray (lev,)
         vertical level array in hPa
-    method : {"Psi_500", "Psi_500_10Perc", "Psi_<p1>_<p2>", "Psi_500_Int", "Psi_Int"},
+    method : {"Psi_500", "Psi_500_10Perc", "Psi_<p1>_<p2>", "Psi_<p1>_<p2>_<x>Perc", "Psi_<p1>_<p2>_<x>Perc_center2d", "Psi_<p1>_<p2>_<x>Perc_profile", "Psi_500_Int", "Psi_Int"},
     optional
         Method of determining which Psi zero crossing to return, by default "Psi_500":
 
@@ -792,6 +873,18 @@ def TropD_Metric_PSI(
                             method name is retained and defaults to ``threshold=0.1``.
         * "Psi_<p1>_<p2>": Zero crossing of Psi vertically averaged between the
                            ``p1`` and ``p2`` hPa levels, e.g. ``"Psi_300_700"``
+        * "Psi_<p1>_<p2>_<x>Perc": Latitude where the layer-mean streamfunction
+                                   between ``p1`` and ``p2`` hPa decreases to
+                                   ``x`` % of the Hadley-cell-center value from
+                                   the full ``(lat, lev)`` field. Omitting the
+                                   suffix defaults to the ``center2d`` variant
+                                   below, so ``"Psi_500_800_5Perc"`` remains the
+                                   Hill-style default.
+        * "Psi_<p1>_<p2>_<x>Perc_center2d": As above, with the threshold taken
+                                            from the 2-D cell-center maximum.
+        * "Psi_<p1>_<p2>_<x>Perc_profile": As above, but with the threshold
+                                           taken from the layer-mean profile
+                                           value at the cell-center latitude.
         * "Psi_500_Int": Zero crossing of the vertically-integrated Psi at 500 hPa
         * "Psi_Int" : Zero crossing of the column-averaged Psi
 
@@ -819,14 +912,9 @@ def TropD_Metric_PSI(
     """
 
     # type casting/input checking
-    V = np.asarray(V)
+    V = _coerce_trailing_lat_lev_axes(V, lat, lev, "V")
     lat = np.asarray(lat)
     lev = np.asarray(lev)
-    if V.shape[-2:] != (lat.size, lev.size):
-        raise ValueError(
-            f"final dimensions on V {V.shape[-2:]} and grid "
-            f"coordinates don't match ({lat.size},{lev.size})"
-        )
 
     normalized_input = field_type.strip().lower()
     if normalized_input in {"v", "wind", "meridional_wind"}:
