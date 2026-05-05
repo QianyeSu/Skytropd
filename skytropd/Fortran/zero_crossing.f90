@@ -75,7 +75,9 @@ contains
     end do
   end subroutine zc_fortran
 
-  subroutine descending_threshold_fortran(profile, nbands, nlat, lat, start_idx, threshold, out) bind(C, name="descending_threshold_fortran")
+  subroutine descending_threshold_fortran( &
+      profile, nbands, nlat, lat, start_idx, threshold, out &
+  ) bind(C, name="descending_threshold_fortran")
     integer(c_int), value :: nbands, nlat
     real(c_double), intent(in) :: profile(*)
     real(c_double), intent(in) :: lat(*)
@@ -104,7 +106,9 @@ contains
           if (abs(val0 - val1) <= epsilon(val0)) then
             out(i + 1) = 0.5d0 * (lat(j) + lat(j + 1))
           else
-            out(i + 1) = lat(j) + (threshold(i + 1) - val0) * (lat(j + 1) - lat(j)) / (val1 - val0)
+            out(i + 1) = lat(j) &
+                + (threshold(i + 1) - val0) * (lat(j + 1) - lat(j)) &
+                / (val1 - val0)
           end if
           exit
         end if
