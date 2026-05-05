@@ -266,7 +266,7 @@ def _build_fit_test_wind():
 
 @pytest.mark.parametrize(
     "method",
-    ["Psi_500", "Psi_500_10Perc", "Psi_300_700", "Psi_500_Int", "Psi_Int"],
+    ["Psi_500", "Psi_500_10Perc", "Psi_300_700", "Psi_500_800", "Psi_500_Int", "Psi_Int"],
 )
 def test_precomputed_psi_matches_v_metric(method):
     V, lats, levs = _build_symmetric_meridional_wind()
@@ -310,6 +310,39 @@ def test_psi_threshold_fallback_replaces_nan_zero_crossing(method):
     for phi_nan, phi_fallback in zip(phi_without_fallback, phi_with_fallback):
         assert np.all(np.isnan(phi_nan))
         assert np.all(np.isfinite(phi_fallback))
+
+
+def test_psi_custom_layer_method_matches_manual_layer_average():
+    V, lats, levs = _build_symmetric_meridional_wind()
+    Psi = TropD_Calculate_StreamFunction(V, lats, levs)
+    layer_mask = (levs >= 500.0) & (levs <= 800.0)
+    actual = TropD_Metric_PSI(Psi, lats, levs, method="Psi_500_800", field_type="PSI")
+    reverse = TropD_Metric_PSI(Psi, lats, levs, method="Psi_800_500", field_type="PSI")
+    manual = TropD_Metric_PSI(
+        Psi[..., layer_mask],
+        lats,
+        levs[layer_mask],
+        method="Psi_Int",
+        field_type="PSI",
+    )
+
+    assert len(actual) == len(reverse) == len(manual) == 2
+    for phi_actual, phi_reverse in zip(actual, reverse):
+        assert np.allclose(phi_actual, phi_reverse, equal_nan=True)
+    for phi_actual, phi_manual in zip(actual, manual):
+        assert np.allclose(phi_actual, phi_manual, equal_nan=True)
+
+
+def test_psi_300_700_alias_preserves_existing_behavior():
+    V, lats, levs = _build_symmetric_meridional_wind()
+    Psi = TropD_Calculate_StreamFunction(V, lats, levs)
+
+    expected = TropD_Metric_PSI(Psi, lats, levs, method="Psi_300_700", field_type="PSI")
+    actual = TropD_Metric_PSI(Psi, lats, levs, method="Psi_700_300", field_type="PSI")
+
+    assert len(actual) == len(expected) == 2
+    for actual_phi, expected_phi in zip(actual, expected):
+        assert np.allclose(actual_phi, expected_phi, equal_nan=True)
 
 
 def test_psi_500_threshold_fallback_matches_explicit_threshold_metric():
