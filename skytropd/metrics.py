@@ -359,24 +359,41 @@ def _psi_metric_latitude(
         lat = lat[::-1]
     cos_lat = np.cos(lat * np.pi / 180.0)[:, None]
 
-    if (method == "Psi_500") or (method == "Psi_500_10Perc"):
+    psi_method = method.strip()
+    psi_method_lower = psi_method.lower()
+
+    if (psi_method == "Psi_500") or (psi_method == "Psi_500_10Perc"):
         # Use Psi at the level nearest to 500 hPa
         P = Psi[..., find_nearest(lev, 500.0)]
-    elif method == "Psi_300_700":
-        # Use Psi averaged between the 300 and 700 hPa level
-        layer_700_to_300 = (lev <= 700.0) & (lev >= 300.0)
-        P = trapezoid(
-            Psi[..., layer_700_to_300] * cos_lat, lev[layer_700_to_300] * 100.0, axis=-1
-        )
-    elif method == "Psi_500_Int":
+    elif psi_method == "Psi_500_Int":
         # Use integrated Psi from p=0 to level nearest to 500 hPa
         PPsi = cumtrapz(Psi * cos_lat, 100.0 * lev, axis=-1, initial=0.0)
         P = PPsi[..., find_nearest(lev, 500.0)]
-    elif method == "Psi_Int":
+    elif psi_method == "Psi_Int":
         # Use vertical mean of Psi
         P = trapezoid(Psi * cos_lat, 100.0 * lev, axis=-1)
+    elif psi_method_lower.startswith("psi_") and psi_method_lower.count("_") == 2:
+        _, lower_str, upper_str = psi_method_lower.split("_")
+        try:
+            lower = float(lower_str)
+            upper = float(upper_str)
+        except ValueError as exc:
+            raise ValueError("unrecognized method " + method) from exc
+
+        lower_bound = min(lower, upper)
+        upper_bound = max(lower, upper)
+        # Use Psi averaged between the requested pressure levels
+        layer_mask = (lev >= lower_bound) & (lev <= upper_bound)
+        if not np.any(layer_mask):
+            raise ValueError(
+                "no pressure levels found within the requested PSI layer "
+                f"{lower:g}-{upper:g} hPa"
+            )
+        P = trapezoid(
+            Psi[..., layer_mask] * cos_lat, lev[layer_mask] * 100.0, axis=-1
+        )
     else:
-        raise ValueError("unrecognized method ", method)
+        raise ValueError("unrecognized method " + method)
 
     # define regions of interest
     subpolar_boundary = 30.0
@@ -405,7 +422,7 @@ def _psi_metric_latitude(
             lat_uncertainty=lat_uncertainty,
         )
 
-    if method == "Psi_500_10Perc":
+    if psi_method == "Psi_500_10Perc":
         threshold_value = 0.1 if threshold is None else threshold
         Phi = _psi_threshold_crossing(threshold_value)
     else:
@@ -765,7 +782,7 @@ def TropD_Metric_PSI(
         latitude array
     lev : numpy.ndarray (lev,)
         vertical level array in hPa
-    method : {"Psi_500", "Psi_500_10Perc", "Psi_300_700", "Psi_500_Int", "Psi_Int"},
+    method : {"Psi_500", "Psi_500_10Perc", "Psi_<p1>_<p2>", "Psi_500_Int", "Psi_Int"},
     optional
         Method of determining which Psi zero crossing to return, by default "Psi_500":
 
@@ -773,8 +790,8 @@ def TropD_Metric_PSI(
         * "Psi_500_10Perc": Crossing of ``threshold`` times the extremum value of Psi
                             in each hemisphere at the 500hPa level. The historical
                             method name is retained and defaults to ``threshold=0.1``.
-        * "Psi_300_700": Zero crossing of Psi vertically averaged between the 300hPa
-                         and 700 hPa levels
+        * "Psi_<p1>_<p2>": Zero crossing of Psi vertically averaged between the
+                           ``p1`` and ``p2`` hPa levels, e.g. ``"Psi_300_700"``
         * "Psi_500_Int": Zero crossing of the vertically-integrated Psi at 500 hPa
         * "Psi_Int" : Zero crossing of the column-averaged Psi
 
