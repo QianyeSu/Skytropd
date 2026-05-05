@@ -37,9 +37,33 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install Linux toolchain
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran ninja-build
+
+      - name: Install macOS toolchain
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          brew list gcc >/dev/null 2>&1 || brew install gcc
+          GCC_PREFIX="$(brew --prefix gcc)"
+          GCC_BIN_DIR="${GCC_PREFIX}/bin"
+          C_BIN="$(compgen -G "${GCC_BIN_DIR}/gcc-[0-9]*" | sort -V | tail -1)"
+          F_BIN="$(compgen -G "${GCC_BIN_DIR}/gfortran-[0-9]*" | sort -V | tail -1)"
+          test -n "${C_BIN}"
+          test -n "${F_BIN}"
+          echo "${GCC_BIN_DIR}" >> "$GITHUB_PATH"
+          echo "CC=${C_BIN}" >> "$GITHUB_ENV"
+          echo "FC=${F_BIN}" >> "$GITHUB_ENV"
+          echo "F77=${F_BIN}" >> "$GITHUB_ENV"
+          echo "F90=${F_BIN}" >> "$GITHUB_ENV"
+
       - name: Install dependencies
         env:
-          SKYTROPD_SKIP_FORTRAN: "1"
           PIP_PREFER_BINARY: "1"
           PIP_ONLY_BINARY: "numpy,scipy"
         run: |
