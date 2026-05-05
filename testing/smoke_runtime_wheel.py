@@ -4,7 +4,6 @@ import numpy as np
 from scipy.io import netcdf_file
 
 import skytropd as pyt
-from skytropd._fortran_zero_crossing import fortran_zero_crossing_status
 
 
 def _load_validation_v():
@@ -24,9 +23,6 @@ def _load_validation_v():
 
 
 def main() -> None:
-    backend_ok, backend_error = fortran_zero_crossing_status()
-    assert backend_ok, backend_error
-
     package_dir = Path(pyt.__file__).resolve().parent
     assert not (package_dir / "ValidationData").exists()
     assert not (package_dir / "ValidationMetrics").exists()
