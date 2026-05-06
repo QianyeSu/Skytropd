@@ -501,8 +501,8 @@ def test_psi_layer_percent_falls_back_to_layer_zero_crossing_poleward_of_50deg()
         psi.values, lats, levs, method="Psi_500_800_5Perc", field_type="PSI"
     )[1]
 
-    assert np.sum(phi_percent > 50.0) == 0
-    assert np.nanmax(phi_percent) <= 50.0
+    assert np.sum(phi_percent > 60.0) == 0
+    assert np.nanmax(phi_percent) <= 60.0
     assert np.any(np.isfinite(phi_layer))
     assert np.any(np.isclose(phi_percent, phi_layer, equal_nan=False))
 

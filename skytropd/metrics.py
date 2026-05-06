@@ -533,12 +533,12 @@ def _psi_metric_latitude(
         phi_flat[:] = fortran_descending_threshold_crossing(
             profile_flat, lat, start_idx, threshold_values
         )
-        fallback_mask = (~np.isfinite(phi)) | (phi > 50.0)
+        fallback_mask = (~np.isfinite(phi)) | (phi > 60.0)
         if not np.any(fallback_mask):
             return phi
 
         # Repository safeguard: if the layer-threshold edge remains poleward of
-        # 50N, fall back only for those cases to the same layer's zero-crossing edge.
+        # 60N, fall back only for those cases to the same layer's zero-crossing edge.
         P_zero = trapezoid(
             Psi[..., layer_mask] * cos_lat, lev[layer_mask] * 100.0, axis=-1
         )
@@ -922,7 +922,11 @@ def TropD_Metric_PSI(
                                    the full ``(lat, lev)`` field. Omitting the
                                    suffix defaults to the ``center2d`` variant
                                    below, so ``"Psi_500_800_5Perc"`` remains the
-                                   Hill-style default.
+                                   Hill-style default. In this repository, if
+                                   the resulting latitude lies poleward of
+                                   60N or is not finite, the metric falls back
+                                   to the same layer's standard zero-crossing
+                                   edge ``"Psi_<p1>_<p2>"``.
         * "Psi_<p1>_<p2>_<x>Perc_center2d": As above, with the threshold taken
                                             from the 2-D cell-center maximum.
         * "Psi_<p1>_<p2>_<x>Perc_profile": As above, but with the threshold

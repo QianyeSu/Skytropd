@@ -538,7 +538,12 @@ class MetricAccessor:
                                        hPa decreases to ``x`` % of the
                                        Hadley-cell-center value from the full
                                        ``(lat, lev)`` field. Omitting the suffix
-                                       defaults to ``center2d``.
+                                       defaults to ``center2d``. In this
+                                       repository, if the resulting latitude
+                                       lies poleward of 60N or is not finite,
+                                       the metric falls back to the same
+                                       layer's standard zero-crossing edge
+                                       ``"Psi_<p1>_<p2>"``.
             * "Psi_<p1>_<p2>_<x>Perc_center2d": Explicit form of the default
                                                 threshold based on the 2-D center
             * "Psi_<p1>_<p2>_<x>Perc_profile": Threshold based on the layer-mean
