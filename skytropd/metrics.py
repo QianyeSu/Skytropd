@@ -432,6 +432,8 @@ def _psi_metric_latitude(
                 f"{lower:g}-{upper:g} hPa"
             )
 
+        # Hill et al. (2025) interpret this edge using a layer-mean profile
+        # and a threshold tied to the Hadley-cell center amplitude.
         profile = Psi[..., layer_mask].mean(axis=-1)
         nh_mask = lat > 0.0
         if not np.any(nh_mask):
@@ -887,6 +889,13 @@ def TropD_Metric_PSI(
                                            value at the cell-center latitude.
         * "Psi_500_Int": Zero crossing of the vertically-integrated Psi at 500 hPa
         * "Psi_Int" : Zero crossing of the column-averaged Psi
+
+        The ``Psi_<p1>_<p2>_<x>Perc*`` family follows the Hadley-cell descending-edge
+        interpretation discussed by Hill, S. A., S. Bordoni, J. L. Mitchell, and
+        J. M. Lora, 2025: *Interpreting Seasonal and Interannual Hadley Cell
+        Descending Edge Migrations via the Cell-Mean Rossby Number*,
+        *Journal of Climate*, 38, 5505-5520,
+        https://doi.org/10.1175/JCLI-D-24-0678.1.
 
     lat_uncertainty : float, optional
         The minimal distance allowed between the adjacent zero crossings, same units as

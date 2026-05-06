@@ -72,5 +72,11 @@ same threshold-crossing calculation directly.
 Layer-threshold methods such as ``"Psi_500_800_5Perc"`` and
 ``"Psi_500_800_10Perc_profile"`` are also available for precomputed PSI fields
 or meridional wind input.
+These layer-threshold variants follow the Hadley-cell descending-edge
+interpretation discussed by Hill, S. A., S. Bordoni, J. L. Mitchell, and
+J. M. Lora, 2025: *Interpreting Seasonal and Interannual Hadley Cell
+Descending Edge Migrations via the Cell-Mean Rossby Number*,
+*Journal of Climate*, 38, 5505-5520,
+https://doi.org/10.1175/JCLI-D-24-0678.1.
 
 More detailed code examples can be found in the file ``TropD_Example_Calculations.py``.
