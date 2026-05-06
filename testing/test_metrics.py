@@ -481,6 +481,32 @@ def test_psi_10perc_center2d_matches_generalized_reference_script_logic():
     assert np.allclose(actual[1], expected_nh, equal_nan=True)
 
 
+def test_psi_layer_percent_falls_back_to_layer_zero_crossing_poleward_of_50deg():
+    sample_path = Path(
+        r"M:\CESM2LE\model\model_1011_001\model_1011_001_Hadley_Circulation"
+        r"\model_1011_001_Hadley_Remove_BarotropicV_1850_2100.nc"
+    )
+    if not sample_path.exists():
+        pytest.skip(f"sample dataset not available: {sample_path}")
+
+    with xr.open_dataset(sample_path) as ds:
+        psi = ds["Hadley_MSF"].transpose("time", "lat", "level").load()
+
+    lats = psi["lat"].values
+    levs = psi["level"].values
+    phi_layer = TropD_Metric_PSI(
+        psi.values, lats, levs, method="Psi_500_800", field_type="PSI"
+    )[1]
+    phi_percent = TropD_Metric_PSI(
+        psi.values, lats, levs, method="Psi_500_800_5Perc", field_type="PSI"
+    )[1]
+
+    assert np.sum(phi_percent > 50.0) == 0
+    assert np.nanmax(phi_percent) <= 50.0
+    assert np.any(np.isfinite(phi_layer))
+    assert np.any(np.isclose(phi_percent, phi_layer, equal_nan=False))
+
+
 def test_psi_5perc_uses_compiled_descending_threshold_backend_when_available(monkeypatch):
     V, lats, levs = _build_symmetric_meridional_wind()
     Psi = TropD_Calculate_StreamFunction(V, lats, levs)

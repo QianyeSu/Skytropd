@@ -381,6 +381,66 @@ def _psi_metric_latitude(
         lat = lat[::-1]
     cos_lat = np.cos(lat * np.pi / 180.0)[:, None]
 
+    def _psi_zero_crossing_latitude(
+        P_field: np.ndarray, allow_threshold_fallback: bool
+    ) -> np.ndarray:
+        subpolar_boundary = 30.0
+        polar_boundary = 60.0
+        mask = (lat > 0) & (lat < polar_boundary)
+        subpolar_mask = (lat > 0) & (lat < subpolar_boundary)
+        lat_masked = lat[mask]
+
+        # 1. Find latitude of maximal tropical Psi
+        Pmax_lat_masked = TropD_Calculate_MaxLat(
+            P_field[..., subpolar_mask], lat[subpolar_mask]
+        )
+
+        # 2. Find latitude of minimal subtropical Psi poleward of tropical maximum
+        lat_after_Pmax = lat_masked >= Pmax_lat_masked[..., None]
+        Plat_after_Pmax = np.where(lat_after_Pmax, P_field[..., mask], np.nan)
+        Pmin_lat_masked = TropD_Calculate_MaxLat(-Plat_after_Pmax, lat_masked)
+
+        # 3. Find the zero crossing between the above latitudes
+        lat_in_between = (lat_masked <= Pmin_lat_masked[..., None]) & lat_after_Pmax
+        Plat_in_between = np.where(lat_in_between, P_field[..., mask], np.nan)
+
+        Phi_zero = TropD_Calculate_ZeroCrossing(
+            Plat_in_between, lat_masked, lat_uncertainty=lat_uncertainty
+        )
+        if not allow_threshold_fallback or threshold is None:
+            return Phi_zero
+
+        Pmax = P_field[..., subpolar_mask].max(axis=-1)[..., None]
+        Phi_threshold = TropD_Calculate_ZeroCrossing(
+            Plat_in_between - threshold * Pmax,
+            lat_masked,
+            lat_uncertainty=lat_uncertainty,
+        )
+        return np.where(np.isnan(Phi_zero), Phi_threshold, Phi_zero)
+
+    def _psi_direct_threshold_latitude(P_field: np.ndarray, threshold_value: float) -> np.ndarray:
+        subpolar_boundary = 30.0
+        polar_boundary = 60.0
+        mask = (lat > 0) & (lat < polar_boundary)
+        subpolar_mask = (lat > 0) & (lat < subpolar_boundary)
+        lat_masked = lat[mask]
+
+        Pmax_lat_masked = TropD_Calculate_MaxLat(
+            P_field[..., subpolar_mask], lat[subpolar_mask]
+        )
+        lat_after_Pmax = lat_masked >= Pmax_lat_masked[..., None]
+        Plat_after_Pmax = np.where(lat_after_Pmax, P_field[..., mask], np.nan)
+        Pmin_lat_masked = TropD_Calculate_MaxLat(-Plat_after_Pmax, lat_masked)
+        lat_in_between = (lat_masked <= Pmin_lat_masked[..., None]) & lat_after_Pmax
+        Plat_in_between = np.where(lat_in_between, P_field[..., mask], np.nan)
+        Pmax = P_field[..., subpolar_mask].max(axis=-1)[..., None]
+
+        return TropD_Calculate_ZeroCrossing(
+            Plat_in_between - threshold_value * Pmax,
+            lat_masked,
+            lat_uncertainty=lat_uncertainty,
+        )
+
     psi_method = method.strip()
     layer_match = re.fullmatch(
         r"Psi_(\d+(?:\.\d+)?)_(\d+(?:\.\d+)?)",
@@ -473,46 +533,27 @@ def _psi_metric_latitude(
         phi_flat[:] = fortran_descending_threshold_crossing(
             profile_flat, lat, start_idx, threshold_values
         )
+        fallback_mask = (~np.isfinite(phi)) | (phi > 50.0)
+        if not np.any(fallback_mask):
+            return phi
+
+        # Repository safeguard: if the layer-threshold edge remains poleward of
+        # 50N, fall back only for those cases to the same layer's zero-crossing edge.
+        P_zero = trapezoid(
+            Psi[..., layer_mask] * cos_lat, lev[layer_mask] * 100.0, axis=-1
+        )
+        phi[fallback_mask] = _psi_zero_crossing_latitude(
+            P_zero[fallback_mask], allow_threshold_fallback=False
+        )
         return phi
     else:
         raise ValueError("unrecognized method " + method)
 
-    # define regions of interest
-    subpolar_boundary = 30.0
-    polar_boundary = 60.0
-    mask = (lat > 0) & (lat < polar_boundary)
-    subpolar_mask = (lat > 0) & (lat < subpolar_boundary)
-    lat_masked = lat[mask]
-
-    # 1. Find latitude of maximal tropical Psi
-    Pmax_lat_masked = TropD_Calculate_MaxLat(P[..., subpolar_mask], lat[subpolar_mask])
-
-    # 2. Find latitude of minimal subtropical Psi poleward of tropical maximum
-    lat_after_Pmax = lat_masked >= Pmax_lat_masked[..., None]
-    Plat_after_Pmax = np.where(lat_after_Pmax, P[..., mask], np.nan)
-    Pmin_lat_masked = TropD_Calculate_MaxLat(-Plat_after_Pmax, lat_masked)
-
-    # 3. Find the zero crossing between the above latitudes
-    lat_in_between = (lat_masked <= Pmin_lat_masked[..., None]) & lat_after_Pmax
-    Plat_in_between = np.where(lat_in_between, P[..., mask], np.nan)
-
-    def _psi_threshold_crossing(threshold_value: float) -> np.ndarray:
-        Pmax = P[..., subpolar_mask].max(axis=-1)[..., None]
-        return TropD_Calculate_ZeroCrossing(
-            Plat_in_between - threshold_value * Pmax,
-            lat_masked,
-            lat_uncertainty=lat_uncertainty,
-        )
-
     if psi_method == "Psi_500_10Perc":
         threshold_value = 0.1 if threshold is None else threshold
-        Phi = _psi_threshold_crossing(threshold_value)
+        Phi = _psi_direct_threshold_latitude(P, threshold_value)
     else:
-        Phi = TropD_Calculate_ZeroCrossing(
-            Plat_in_between, lat_masked, lat_uncertainty=lat_uncertainty
-        )
-        if threshold is not None:
-            Phi = np.where(np.isnan(Phi), _psi_threshold_crossing(threshold), Phi)
+        Phi = _psi_zero_crossing_latitude(P, allow_threshold_fallback=True)
 
     return Phi
 
